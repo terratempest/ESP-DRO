@@ -1,6 +1,7 @@
 # ESP-DRO
-Summary:
-Requires
+
+Dependencies: 
+
   lvgl/lvgl: ^9.2.2
   espressif/esp_lcd_touch_gt911: ^1.1.3
 
@@ -41,10 +42,6 @@ Key Components & Structure
     interrupts.cpp
 
         Sets up and manages ISR services for the axes using the hardware abstraction layer.
-
-    ui_widgets.cpp
-
-        Contains helper functions to create common UI widgets (labels, buttons, dropdowns, panels) with LVGL.
 
     ui_manager.cpp
 
