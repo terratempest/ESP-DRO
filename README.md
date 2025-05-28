@@ -2,8 +2,9 @@
 
 Dependencies: 
 
-  lvgl/lvgl: ^9.2.2
-  espressif/esp_lcd_touch_gt911: ^1.1.3
+    lvgl/lvgl: ^9.2.2
+
+    espressif/esp_lcd_touch_gt911: ^1.1.3
 
 
 This firmware is for a Digital Read Out (DRO) system. It runs on an ESP32 and provides a touchscreen UI to display
