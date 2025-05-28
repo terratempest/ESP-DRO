@@ -13,9 +13,6 @@
 #include "hardware_abstraction.h"
 #include "interrupts.h"
 
-// Utils
-#include "logging.h"
-
 // LVGL
 extern "C" {
     #include <lvgl.h>
