@@ -40,4 +40,5 @@ CMakeUserPresets.json
 .devcontainer/
 Backups/
 build/
-managed_componenets/
+managed_components/
+sdkconfig.old
