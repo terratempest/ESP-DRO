@@ -29,6 +29,10 @@ public:
     void  setPositionUm(float newPos);
     float getPositionUm() const;
 
+    // Global Reference Position
+    void  setGlobalReference(float ref) { globalReference_ =  ref; }
+    float getGlobalReference() const    { return globalReference_; }
+
     // For simulation/testing
     void simulateStep(bool forward);
 
@@ -38,5 +42,7 @@ public:
 private:
     std::atomic<uint8_t> last_state;
     volatile int32_t tick_count = 0; 
-    bool invertAxis = false;
+
+    bool  invertAxis = false;
+    float globalReference_ = 0.0f;
 };

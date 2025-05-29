@@ -4,35 +4,58 @@
 #include <cstdio>
 #include "lv_helpers/LVHelpers.h"
 #include "screens/mainScreen.h"
-#include "settings/settingsMenu.h" 
+#include "settings/settingsMenu.h"
+#include "popups/numericInputPopup.h"
 
 UIManager::UIManager(ToolManager& tm, DroAxis* axes, PreferencesWrapper& p)
     : toolManager(tm), axes(axes), xAxis(axes[0]), zAxis(axes[1]), prefs(p)
 {}
 
-// ---- UI Initialization ----
 void UIManager::init() {
     lv_obj_clean(lv_scr_act());
     loadUnitSettings();
+    loadGlobalReferences();
 
     buildMainScreen(ui);
 
-    // ---- Event Hookups ----
-
-    // DRO click (manual entry)
-    ui.axis1DRO->onClick([this]{ showNumericInputPopup(0); });
-    ui.axis2DRO->onClick([this]{ showNumericInputPopup(1); });
-
-    // Zero buttons
-    ui.axis1Zero->onClick([this]{
-        toolManager.getTool(currentToolIndex).x_offset = xAxis.getPositionUm() / 1000.0f;
-        toolManager.saveTools();
-        updateDisplay();
+    // DRO click: show numeric popup for global reference (DRO set)
+    ui.axis1DRO->onClick([this]{
+        NumericInputPopup::show(
+            "Set DRO Value",
+            [this](float value, bool cancelled){
+                if (!cancelled) setGlobalReference(0, value);
+            }
+        );
     });
-    ui.axis2Zero->onClick([this]{
-        toolManager.getTool(currentToolIndex).z_offset = zAxis.getPositionUm() / 1000.0f;
-        toolManager.saveTools();
-        updateDisplay();
+    ui.axis2DRO->onClick([this]{
+        NumericInputPopup::show(
+            "Set DRO Value",
+            [this](float value, bool cancelled){
+                if (!cancelled) setGlobalReference(1, value);
+            }
+        );
+    });
+
+    // Zero buttons (set global reference for axis to zero at current pos)
+    ui.axis1Zero->onClick([this]{ setGlobalReference(0, 0.0f); });
+    ui.axis2Zero->onClick([this]{ setGlobalReference(1, 0.0f); });
+
+    // Tool offset set buttons: show numeric popup for tool offset
+    ui.axis1TLO->onClick([this]{
+        NumericInputPopup::show(
+            "Set Tool Offset",
+            [this](float value, bool cancelled){
+                if (!cancelled) setToolOffsetValue(0, value);
+            }
+        );
+    });
+    ui.axis2TLO->onClick([this]{
+        NumericInputPopup::show(
+            "Set Tool Offset",
+            [this](float value, bool cancelled){
+                if (!cancelled) setToolOffsetValue(1, value);
+            }
+        );
     });
 
     // Tool dropdown
@@ -46,7 +69,9 @@ void UIManager::init() {
     ui.toolBtnAdd->onClick([this]{
         char name[32];
         snprintf(name, sizeof(name), "Tool %zu", toolManager.toolCount() + 1);
-        toolManager.addTool(name, xAxis.getPositionUm() / 1000.0f, zAxis.getPositionUm() / 1000.0f);
+        toolManager.addTool(name,
+            xAxis.getPositionUm() / 1000.0f - xAxis.getGlobalReference(),
+            zAxis.getPositionUm() / 1000.0f - zAxis.getGlobalReference());
         currentToolIndex = toolManager.toolCount() - 1;
         updateToolDropdown();
         updateDisplay();
@@ -86,11 +111,12 @@ void UIManager::init() {
 // --- Display and Logic ---
 
 void UIManager::updateDisplay() {
-    // Calculate axis values
     float x_offset = toolManager.getTool(currentToolIndex).x_offset;
     float z_offset = toolManager.getTool(currentToolIndex).z_offset;
-    float x = xAxis.getPositionUm() / 1000.0f - x_offset;
-    float z = zAxis.getPositionUm() / 1000.0f - z_offset;
+
+    float x = (xAxis.getPositionUm() / 1000.0f) - xAxis.getGlobalReference() - x_offset;
+    float z = (zAxis.getPositionUm() / 1000.0f) - zAxis.getGlobalReference() - z_offset;
+
     if (!isMetric) { x *= 0.0393701f; z *= 0.0393701f; }
     if (isDiameterMode) x *= 2.0f;
 
@@ -100,13 +126,11 @@ void UIManager::updateDisplay() {
     snprintf(buf, sizeof(buf), "%.4f", z);
     ui.axis2DRO->setText(buf);
 
-    // Button texts
     ui.funcBtnUnits->setText(isMetric ? "mm" : "in");
     ui.funcBtnDia->setText(isDiameterMode ? "DIA" : "RAD");
-
-    // Dropdown selection
     ui.toolDropdown->setSelected(currentToolIndex);
 }
+
 void UIManager::updateToolDropdown() {
     std::vector<std::string> options;
     for (size_t i = 0; i < toolManager.toolCount(); ++i)
@@ -114,100 +138,68 @@ void UIManager::updateToolDropdown() {
     ui.toolDropdown->setOptions(options);
     ui.toolDropdown->setSelected(currentToolIndex);
 }
+
 void UIManager::loadOffsetsFromTool(uint16_t index) {
     if (index < toolManager.toolCount())
         currentToolIndex = index;
 }
-void UIManager::onSetDroValue(int axis, float userValue) {
+
+// --- Set global reference (work zero) for given axis ---
+void UIManager::setGlobalReference(int axis, float desiredDroValue) {
+    DroAxis& axisObj = axes[axis];
     Tool& tool = toolManager.getTool(currentToolIndex);
-    if (axis == 0) {
-        float pos_x = xAxis.getPositionUm() / 1000.0f;
-        float val = userValue;
-        if (!isMetric) val = val / 0.0393701f;
-        if (isDiameterMode) val = val / 2.0f;
-        tool.x_offset = pos_x - val;
-    } else {
-        float pos_z = zAxis.getPositionUm() / 1000.0f;
-        float val = userValue;
-        if (!isMetric) val = val / 0.0393701f;
-        tool.z_offset = pos_z - val;
-    }
+
+    float userValue = desiredDroValue;
+
+    // Convert from inches to mm if needed (store internally in mm)
+    if (!isMetric) userValue /= 0.0393701f;
+
+    // Convert from diameter mode to radius (store in axis units)
+    if (axis == 0 && isDiameterMode) userValue /= 2.0f;
+
+    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+    float tool_offset = (axis == 0) ? tool.x_offset : tool.z_offset;
+
+    axisObj.setGlobalReference(machine_pos - userValue - tool_offset);
+
+    saveGlobalReferences();
+    updateDisplay();
+}
+
+// --- Set current tool's offset for selected axis (based on user value) ---
+void UIManager::setToolOffsetValue(int axis, float userValue) {
+    DroAxis& axisObj = axes[axis];
+    Tool& tool = toolManager.getTool(currentToolIndex);
+
+    float inputValue = userValue;
+
+    // Convert from inches to mm if needed
+    if (!isMetric) inputValue /= 0.0393701f;
+
+    // Convert from diameter mode to radius if needed (X axis only)
+    if (axis == 0 && isDiameterMode) inputValue /= 2.0f;
+
+    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+
+    if (axis == 0)
+        tool.x_offset = machine_pos - axisObj.getGlobalReference() - inputValue;
+    else
+        tool.z_offset = machine_pos - axisObj.getGlobalReference() - inputValue;
+
     toolManager.saveTools();
     updateDisplay();
 }
 
-// --- Popup Windows ---
-
-void UIManager::showNumericInputPopup(int axis) {
-    // Overlay
-    auto* overlay = new LVContainer(lv_scr_act(), [](auto& p){
-        p.setSize(LCD_H_RES, LCD_V_RES);
-        p.setTransparentBg();
-        p.setFlag(LV_OBJ_FLAG_CLICKABLE);
-        p.setPadAll(0);
-        
-    });
-
-    auto* rightCont = new LVContainer(overlay->obj, [&](auto& r) {
-        r.setSize(LCD_H_RES*3/7, LCD_V_RES);
-        r.setAlign(LV_ALIGN_TOP_RIGHT);
-        r.setPadAll(16);
-    });
-
-    // Centered panel
-    auto* panel = new LVPanel(rightCont->obj, [&](auto& p){
-        p.setSizePercent(100, 100);
-        p.setAlign(LV_ALIGN_CENTER);
-        p.setBgColor(lv_color_black());
-        p.setBgOpa(LV_OPA_COVER);
-        p.setBorderColor(lv_color_white());
-        p.setBorderWidth(3);
-        p.setRadius(10);
-        p.setPadAll(0);
-    });
-
-    // Title
-    auto* title = new LVContainer(panel->obj, [](auto& p){
-        p.setSizePercent(100, 10);
-        p.setPadAll(8);
-    });
-    
-    new LVLabel(title->obj, "Set DRO Value", [](auto& l){
-        l.setAlign(LV_ALIGN_CENTER);
-        l.setTextColor(lv_color_white());
-    });
-    // Close button (top right)
-    auto* closeBtn = new LVButton(title->obj, LV_SYMBOL_CLOSE, [&](auto& b){
-        b.setSize(30, 30);
-        b.setAlign(LV_ALIGN_RIGHT_MID);
-        b.setBgColor(COLOR_BUTTON);
-        b.onClick([=]{ overlay->del(); });
-    });
-
-    // Textarea for numeric input
-    auto* ta = new LVTextarea(panel->obj, "", [&](auto& t){
-        t.setSizePercent(100, 10);
-        t.setOneLine(true);
-        t.setRadius(0);
-        t.setAlign(LV_ALIGN_TOP_MID, 0, title->getHeight());
-    });
-
-    // Numeric keyboard
-    auto* kb = new LVKeyboardNumeric(panel->obj, [&](auto& k){
-        k.setSizePercent(100,80);
-        k.setAlign(LV_ALIGN_BOTTOM_MID, 0, 0);
-        k.setTextarea(ta->obj);
-        k.onEvent(LV_EVENT_READY, [=]{
-            float val = strtof(ta->getText().c_str(), nullptr);
-            this->onSetDroValue(axis, val);
-            overlay->del();
-        });
-        k.onEvent(LV_EVENT_CANCEL, [=]{ overlay->del(); });
-    });
-
-    // Optionally: focus textarea for immediate input
-    ta->focus();
+// --- Save/load global references for axes ---
+void UIManager::saveGlobalReferences() {
+    prefs.putFloat("global_ref_x", xAxis.getGlobalReference());
+    prefs.putFloat("global_ref_z", zAxis.getGlobalReference());
 }
+void UIManager::loadGlobalReferences() {
+    xAxis.setGlobalReference(prefs.getFloat("global_ref_x", 0.0f));
+    zAxis.setGlobalReference(prefs.getFloat("global_ref_z", 0.0f));
+}
+
 void UIManager::showToolEditPopup() {
     int sel = ui.toolDropdown->getSelected();
     std::string oldName = toolManager.getTool(sel).name;
@@ -402,7 +394,7 @@ void UIManager::showSettingsPopup() {
     });
 }
 
-// --- Utility, Sleep, and Persistence as before ---
+// --- Utility, Sleep, and Persistence ---
 
 void UIManager::saveUnitSettings() { 
     prefs.putUShort("is_metric", isMetric ? 1 : 0); 

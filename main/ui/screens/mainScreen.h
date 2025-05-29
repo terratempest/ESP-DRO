@@ -16,12 +16,14 @@ struct MainScreenPtrs {
     LVLabel*     axis1DRO;
     LVButton*    axis1Zero;
     LVLabel*     axis1ZeroLabel;
+    LVButton*    axis1TLO;
     LVPanel*     axis2;
     LVLabel*     axis2Label;
     LVLabel*     axis2Ghost;
     LVLabel*     axis2DRO;
     LVButton*    axis2Zero;
     LVLabel*     axis2ZeroLabel;
+    LVButton*    axis2TLO;
     LVContainer* rightPanel;
     LVFlexContainer* funcFlex;
     LVButton*    funcBtnUnits; 
@@ -88,6 +90,7 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
         c.setHeight(84);
         c.setWidthPercent(100);
         c.setBgColor(COLOR_BLACK);
+        c.setScrollable(false);
     });
     ui.axis1Label = new LVLabel(ui.axis1->obj, "X", [&](auto& lbl){
         lbl.setAlign(LV_ALIGN_LEFT_MID);
@@ -107,7 +110,13 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
     });
     ui.axis1Zero = new LVButton(ui.axis1->obj, "ZERO", [&](auto& btn){
         btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID);
+        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, 18);
+        btn.setRadius(6);
+        btn.setBgColor(COLOR_GRAY);
+    });
+    ui.axis1TLO = new LVButton(ui.axis1->obj, "TLO", [&](auto& btn){
+        btn.setSize(64, 32);
+        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, -18);
         btn.setRadius(6);
         btn.setBgColor(COLOR_GRAY);
     });
@@ -118,6 +127,7 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
         c.setWidthPercent(100);
         c.setPos(0, 100);
         c.setBgColor(COLOR_BLACK);
+        c.setScrollable(false);
     });
     ui.axis2Label = new LVLabel(ui.axis2->obj, "Z", [&](auto& lbl){
         lbl.setAlign(LV_ALIGN_LEFT_MID);
@@ -137,7 +147,13 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
     });
     ui.axis2Zero = new LVButton(ui.axis2->obj, "ZERO", [&](auto& btn){
         btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID);
+        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, 18);
+        btn.setRadius(6);
+        btn.setBgColor(COLOR_GRAY);
+    });
+    ui.axis2TLO = new LVButton(ui.axis2->obj, "TLO", [&](auto& btn){
+        btn.setSize(64, 32);
+        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, -18);
         btn.setRadius(6);
         btn.setBgColor(COLOR_GRAY);
     });

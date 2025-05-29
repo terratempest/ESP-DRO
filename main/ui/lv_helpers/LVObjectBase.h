@@ -36,7 +36,7 @@ public:
     void addState(lv_state_t state)                 { lv_obj_add_state(obj, state); }
     void clearState(lv_state_t state)               { lv_obj_clear_state(obj, state); }
     bool hasState(lv_state_t state) const           { return lv_obj_has_state(obj, state); }
-    void setScrollable(bool s = true)               { if (s){lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);} else {lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);}}
+    void setScrollable(bool s = true)               { if (s){lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);} else {lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);}}
 
     // ---- Visibility & Focus ----
     void setVisible(bool visible=true)              { if(visible) lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN); }

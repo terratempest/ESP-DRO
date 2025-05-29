@@ -25,7 +25,7 @@ void DroAxis::init(const char* name, int pinA, int pinB, float step_um) {
 
 void DroAxis::begin() {
     // Configure pins as input with pull-up
-    gpio_config_t io_conf = {};
+    gpio_config_t io_conf   = {};
     io_conf.intr_type       = GPIO_INTR_ANYEDGE;
     io_conf.mode            = GPIO_MODE_INPUT;
     io_conf.pull_up_en      = GPIO_PULLUP_ENABLE;

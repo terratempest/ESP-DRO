@@ -41,5 +41,10 @@ private:
     void goToSleep();
     void showSettingsPopup();
     void showToolEditPopup();
+    void loadGlobalReferences();
+    void saveGlobalReferences();
+    void setToolOffset(int axis);
+    void setGlobalReference(int axis, float desiredDroValue);
+    void setToolOffsetValue(int axis, float userValue);
 
 };
