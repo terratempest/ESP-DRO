@@ -55,7 +55,7 @@ void  DroAxis::setInvert(bool invert) { invertAxis = invert; }
 bool  DroAxis::getInvert() const { return invertAxis; }
 
 void  DroAxis::setPositionUm(float newPos) {position_um = newPos;}
-float DroAxis::getPositionUm() const {return tick_count * step_um;}
+float DroAxis::getPositionUm() const {return position_um;}
 
 void  DroAxis::simulateStep(bool forward) {position_um += forward ? step_um : -step_um;} //Debugging
 
@@ -77,6 +77,7 @@ void  DroAxis::handleInterrupt() {
     if (invertAxis) dir = -dir;
     if (dir != 0) {
         tick_count += dir; 
+        position_um = tick_count * step_um;
     }
     last_state.store(state, std::memory_order_relaxed);
 }

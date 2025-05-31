@@ -58,8 +58,6 @@ extern "C" void app_main() {
     // LVGL init
     lv_init();
     app_display_init();
-    
-    toolManager.loadTools(); // Load tools and offsets from preferences   
 
     // Setup UI
     uiManager = new UIManager(toolManager, DROAxes, prefsWrapper); 

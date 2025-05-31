@@ -7,48 +7,47 @@
 // Axis/Encoder config
 typedef struct { 
     const char* name;
-    int pinA;
-    int pinB;
+    int   pinA;
+    int   pinB;
     float resolution_um; // axis-specific resolution in um/pulse
 } AxisConfig;
 
 // Config for linear scales
 const AxisConfig AXES[] = {
-    // {name, pinA, pinB, resolution}
-    {"x", 17, 11, 5.0f}, // Axis 1
-    {"z", 12, 13, 5.0f}, // Axis 2
+    // {name, pinA, pinB, resolution, toggle (optional)}
+    {"x", 17, 11, 5.0f},
+    //{"y", -1, -1, 5.0f}, // Uncomment for 3-axis
+    {"z", 12, 13, 5.0f}, 
     // Add more axis as required
 };
 #define AXES_COUNT (sizeof(AXES)/sizeof(AXES[0])) // Number of axes defined
 
-// Number of tools supported (for array allocation, if needed)
-#define CONFIG_MAX_TOOLS 16
+// Number of tools supported (for array allocation)
+#define CONFIG_MAX_TOOLS 50
 
-// UI/TFT/LCD config (adjust for your display)
-#define TFT_WIDTH   800
-#define TFT_HEIGHT  480
-#define LCD_H_RES TFT_WIDTH
-#define LCD_V_RES TFT_HEIGHT
-
-// Feature toggles (set to 1/0)
-#define ENABLE_DIAMETER_MODE   1
+// Feature toggles (set to 1/0) // TODO: Implement logic to turn on/off in UI
+#define ENABLE_DIAMETER_MODE   1 // Only applies to first defined axis 0
 #define ENABLE_METRIC_TOGGLE   1
 #define ENABLE_TOOL_MANAGEMENT 1
 
 //----------------------------------------
 // PREFERENCES STORAGE
 //----------------------------------------
-#define NVS_NAMESPACE          "settings"
-#define NVS_VERSION 1
+#define NVS_NAMESPACE "settings"
+#define NVS_VERSION   1 
 
 //----------------------------------------
 // LOGGING
 //----------------------------------------
-#define DEFAULT_LOG_LEVEL      LOG_INFO
+#define DEFAULT_LOG_LEVEL      LOG_INFO 
 
 //----------------------------------------
 // DISPLAY & TOUCH
 //----------------------------------------
+
+// UI/TFT/LCD config (adjust for your display)
+#define LCD_H_RES  800
+#define LCD_V_RES  480
 
 // Pixel clock
 #define LCD_PIXEL_CLOCK_HZ  12500000U

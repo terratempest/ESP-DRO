@@ -2,14 +2,7 @@
 
 #include <functional>
 #include <string>
-
-// Forward-declare LVGL wrapper types as needed:
-class LVContainer;
-class LVPanel;
-class LVLabel;
-class LVButton;
-class LVTextarea;
-class LVKeyboardNumeric;
+#include "lv_helpers/LVHelpers.h"
 
 class NumericInputPopup {
 public:

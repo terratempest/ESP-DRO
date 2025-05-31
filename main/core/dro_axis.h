@@ -32,7 +32,7 @@ public:
     // Global Reference Position
     void  setGlobalReference(float ref) { globalReference_ =  ref; }
     float getGlobalReference() const    { return globalReference_; }
-
+    
     // For simulation/testing
     void simulateStep(bool forward);
 

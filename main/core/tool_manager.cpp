@@ -1,5 +1,5 @@
 #include "tool_manager.h"
-#include <cstdio> 
+#include <cstdio>
 #include <algorithm>
 
 ToolManager::ToolManager(PreferencesWrapper& prefs_ref)
@@ -8,9 +8,9 @@ ToolManager::ToolManager(PreferencesWrapper& prefs_ref)
     loadTools();
 }
 
-bool ToolManager::addTool(const std::string& name, float x_offset, float z_offset) {
+bool ToolManager::addTool(const std::string& name, const std::vector<float>& offsets) {
     if (tools.size() >= MAX_TOOLS) return false;
-    tools.push_back(Tool{name, x_offset, z_offset});
+    tools.push_back(Tool{name, offsets});
     saveTools();
     return true;
 }
@@ -52,15 +52,18 @@ void ToolManager::loadToolCount() {
 
 void ToolManager::saveTool(size_t index) const {
     if (index >= tools.size()) return;
-    char key[32];
+    char key[64];
+
+    // Save name
     snprintf(key, sizeof(key), "tool_name_%u", static_cast<unsigned>(index));
     prefs.putString(key, tools[index].name.c_str());
 
-    snprintf(key, sizeof(key), "tool_x_%u", static_cast<unsigned>(index));
-    prefs.putFloat(key, tools[index].x_offset);
-
-    snprintf(key, sizeof(key), "tool_z_%u", static_cast<unsigned>(index));
-    prefs.putFloat(key, tools[index].z_offset);
+    // Save offsets for each axis
+    const auto& offsets = tools[index].offsets;
+    for (size_t ax = 0; ax < offsets.size(); ++ax) {
+        snprintf(key, sizeof(key), "tool_axis%zu_%u", ax, static_cast<unsigned>(index));
+        prefs.putFloat(key, offsets[ax]);
+    }
 }
 
 void ToolManager::saveTools() const {
@@ -71,20 +74,22 @@ void ToolManager::saveTools() const {
 }
 
 void ToolManager::loadTool(size_t index) {
-    char key[32];
+    char key[64];
     snprintf(key, sizeof(key), "tool_name_%u", static_cast<unsigned>(index));
     std::string name = prefs.getString(key, ("Tool " + std::to_string(index + 1)).c_str()).c_str();
 
-    snprintf(key, sizeof(key), "tool_x_%u", static_cast<unsigned>(index));
-    float x = prefs.getFloat(key, 0);
-
-    snprintf(key, sizeof(key), "tool_z_%u", static_cast<unsigned>(index));
-    float z = prefs.getFloat(key, 0);
+    // Figure out how many axes (assume AXES_COUNT is visible)
+    std::vector<float> offsets;
+    for (size_t ax = 0; ax < AXES_COUNT; ++ax) {
+        snprintf(key, sizeof(key), "tool_axis%zu_%u", ax, static_cast<unsigned>(index));
+        float val = prefs.getFloat(key, 0.0f);
+        offsets.push_back(val);
+    }
 
     if (index < tools.size()) {
-        tools[index] = Tool{name, x, z};
+        tools[index] = Tool{name, offsets};
     } else {
-        tools.push_back(Tool{name, x, z});
+        tools.push_back(Tool{name, offsets});
     }
 }
 
@@ -92,10 +97,11 @@ void ToolManager::loadTools() {
     tools.clear();
     size_t count = prefs.getUShort("tool_count", 0);
     if (count == 0) {
-        addTool("Tool 1", 0.0f, 0.0f);
+        // Default tool: all offsets zero for all axes
+        std::vector<float> zero_offsets(AXES_COUNT, 0.0f);
+        addTool("Tool 1", zero_offsets);
         count = 1;
     }
-    //if (count > MAX_TOOLS) count = MAX_TOOLS;
     for (size_t i = 0; i < count; ++i) {
         loadTool(i);
     }

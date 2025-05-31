@@ -1,51 +1,51 @@
 #pragma once
 #include "./lv_helpers/LVHelpers.h"
+#include "popups/numericInputPopup.h"
+#include "popups/settingsPopup.h"
+#include "popups/toolEditPopup.h"
+#include "settings/settingsMenu.h"
+#include <vector>
+#include "dro_axis.h"  
 
-// Forward declare global pointers if you need to access/update them elsewhere
 struct MainScreenPtrs {
-    LVContainer* main;
-    LVContainer* title;
-    LVLabel*     titleLabel;
-    LVButton*    sleepBtn;
-    LVLabel*     sleepBtnLabel;
-    LVContainer* contents;
-    LVContainer* axisContainer;
-    LVPanel*     axis1;
-    LVLabel*     axis1Label;
-    LVLabel*     axis1Ghost;
-    LVLabel*     axis1DRO;
-    LVButton*    axis1Zero;
-    LVLabel*     axis1ZeroLabel;
-    LVButton*    axis1TLO;
-    LVPanel*     axis2;
-    LVLabel*     axis2Label;
-    LVLabel*     axis2Ghost;
-    LVLabel*     axis2DRO;
-    LVButton*    axis2Zero;
-    LVLabel*     axis2ZeroLabel;
-    LVButton*    axis2TLO;
-    LVContainer* rightPanel;
-    LVFlexContainer* funcFlex;
-    LVButton*    funcBtnUnits; 
-    LVButton*    funcBtnDia; 
-    LVButton*    funcBtn3; 
-    LVButton*    funcBtnSettings; 
-    LVFlexContainer* toolFlex;
-    LVDropdown*  toolDropdown;
-    LVButton*    toolBtnEdit; 
-    LVButton*    toolBtnAdd; 
-    LVButton*    toolBtnRemove; 
+    LVContainer* main = nullptr;
+    LVContainer* title = nullptr;
+    LVLabel*     titleLabel = nullptr;
+    LVButton*    sleepBtn = nullptr;
+    LVLabel*     sleepBtnLabel = nullptr;
+    LVContainer* contents = nullptr;
+    LVContainer* axisContainer = nullptr;
+
+    // Per-axis containers
+    std::vector<LVPanel*> axisPanels;
+    std::vector<LVLabel*> axisLabels;
+    std::vector<LVLabel*> axisGhosts;
+    std::vector<LVLabel*> axisDROs;
+    std::vector<LVButton*> axisZeroBtns;
+    std::vector<LVButton*> axisTLOBtns;
+
+    LVContainer* rightPanel = nullptr;
+    LVFlexContainer* funcFlex = nullptr;
+    LVButton*    funcBtnUnits = nullptr;
+    LVButton*    funcBtnDia = nullptr;
+    LVButton*    funcBtn3 = nullptr;
+    LVButton*    funcBtnSettings = nullptr;
+
+    LVFlexContainer* toolFlex = nullptr;
+    LVDropdown*  toolDropdown = nullptr;
+    LVButton*    toolBtnEdit = nullptr;
+    LVButton*    toolBtnAdd = nullptr;
+    LVButton*    toolBtnRemove = nullptr;
 };
 
-inline void buildMainScreen(MainScreenPtrs& ui) {
-    // Main background container
+// Pass DroAxis* axes and axis_count!
+inline void buildMainScreen(MainScreenPtrs& ui, DroAxis* axes, int axis_count) {
     ui.main = new LVContainer(lv_scr_act(), [&](auto& c) {
         c.setSize(LCD_H_RES, LCD_V_RES);
         c.clearFlag(LV_OBJ_FLAG_SCROLLABLE);
         c.setPadding(0,0,0,0);
     });
 
-    // Title bar
     ui.title = new LVContainer(ui.main->obj, [&](auto& bar) {
         bar.setHeight(40);
         bar.setWidth(LCD_H_RES);
@@ -68,7 +68,6 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
         btn.setRadius(16);
     });
 
-    // Main contents panel
     ui.contents = new LVContainer(ui.main->obj, [&](auto& c) {
         c.setHeight(440);
         c.setWidth(LCD_H_RES);
@@ -78,87 +77,66 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
         c.clearFlag(LV_OBJ_FLAG_SCROLLABLE);
     });
 
-    // Axis/left panel (vertical split)
     ui.axisContainer = new LVContainer(ui.contents->obj, [&](auto& c){
         c.setWidthPercent(55);
         c.setHeight(440);
         c.setPadding(8,8,8,8);
     });
 
-    // Axis 1 (X)
-    ui.axis1 = new LVPanel(ui.axisContainer->obj, [&](auto& c){
-        c.setHeight(84);
-        c.setWidthPercent(100);
-        c.setBgColor(COLOR_BLACK);
-        c.setScrollable(false);
-    });
-    ui.axis1Label = new LVLabel(ui.axis1->obj, "X", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_LEFT_MID);
-        lbl.setTextColor(COLOR_YELLOW_GREEN);
-        //lbl.setFont(&LV_FONT_MONTSERRAT_32);
-    });
-    ui.axis1Ghost = new LVLabel(ui.axis1->obj, "88888.8888", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
-        lbl.setFont(&lv_font_7seg_64);
-        lbl.setTextColor(COLOR_DARK_GRAY);
-    });
-    ui.axis1DRO = new LVLabel(ui.axis1->obj, "167.2840", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
-        lbl.setFont(&lv_font_7seg_64);
-        lbl.setTextColor(COLOR_YELLOW_GREEN);
-        lbl.setFlag(LV_OBJ_FLAG_CLICKABLE);
-    });
-    ui.axis1Zero = new LVButton(ui.axis1->obj, "ZERO", [&](auto& btn){
-        btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, 18);
-        btn.setRadius(6);
-        btn.setBgColor(COLOR_GRAY);
-    });
-    ui.axis1TLO = new LVButton(ui.axis1->obj, "TLO", [&](auto& btn){
-        btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, -18);
-        btn.setRadius(6);
-        btn.setBgColor(COLOR_GRAY);
-    });
+    // ---- DYNAMIC AXIS WIDGETS ----
+    for (int i = 0; i < axis_count; ++i) {
+        // Panel for this axis
+        auto panel = new LVPanel(ui.axisContainer->obj, [&](auto& c){
+            c.setHeight(84);
+            c.setWidthPercent(100);
+            c.setPos(0, i * 100);
+            c.setBgColor(COLOR_BLACK);
+            c.setScrollable(false);
+        });
 
-    // Axis 2 (Z)
-    ui.axis2 = new LVPanel(ui.axisContainer->obj, [&](auto& c){
-        c.setHeight(84);
-        c.setWidthPercent(100);
-        c.setPos(0, 100);
-        c.setBgColor(COLOR_BLACK);
-        c.setScrollable(false);
-    });
-    ui.axis2Label = new LVLabel(ui.axis2->obj, "Z", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_LEFT_MID);
-        lbl.setTextColor(COLOR_YELLOW_GREEN);
-        //lbl.setFont(&LV_FONT_MONTSERRAT_32);
-    });
-    ui.axis2Ghost = new LVLabel(ui.axis2->obj, "88888.8888", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
-        lbl.setFont(&lv_font_7seg_64);
-        lbl.setTextColor(COLOR_DARK_GRAY);
-    });
-    ui.axis2DRO = new LVLabel(ui.axis2->obj, "167.2840", [&](auto& lbl){
-        lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
-        lbl.setFont(&lv_font_7seg_64);
-        lbl.setTextColor(COLOR_YELLOW_GREEN);
-        lbl.setFlag(LV_OBJ_FLAG_CLICKABLE);
-    });
-    ui.axis2Zero = new LVButton(ui.axis2->obj, "ZERO", [&](auto& btn){
-        btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, 18);
-        btn.setRadius(6);
-        btn.setBgColor(COLOR_GRAY);
-    });
-    ui.axis2TLO = new LVButton(ui.axis2->obj, "TLO", [&](auto& btn){
-        btn.setSize(64, 32);
-        btn.setAlign(LV_ALIGN_RIGHT_MID, 0, -18);
-        btn.setRadius(6);
-        btn.setBgColor(COLOR_GRAY);
-    });
+        // *** Get axis name directly from DroAxis ***
+        const char* axis_name = axes[i].name; // Or axes[i].getName().c_str() if accessor
 
-    // Right panel container (function buttons)
+        auto label = new LVLabel(panel->obj, axis_name, [&](auto& lbl){
+            lbl.setAlign(LV_ALIGN_LEFT_MID);
+            lbl.setTextColor(COLOR_YELLOW_GREEN);
+        });
+
+        auto ghost = new LVLabel(panel->obj, "88888.8888", [&](auto& lbl){
+            lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
+            lbl.setFont(&lv_font_7seg_64);
+            lbl.setTextColor(COLOR_DARK_GRAY);
+        });
+
+        auto dro = new LVLabel(panel->obj, "0.0000", [&](auto& lbl){
+            lbl.setAlign(LV_ALIGN_RIGHT_MID, -80, 0);
+            lbl.setFont(&lv_font_7seg_64);
+            lbl.setTextColor(COLOR_YELLOW_GREEN);
+            lbl.setFlag(LV_OBJ_FLAG_CLICKABLE);
+        });
+
+        auto zeroBtn = new LVButton(panel->obj, "ZERO", [&](auto& btn){
+            btn.setSize(64, 32);
+            btn.setAlign(LV_ALIGN_RIGHT_MID, 0, 18);
+            btn.setRadius(6);
+            btn.setBgColor(COLOR_GRAY);
+        });
+
+        auto tloBtn = new LVButton(panel->obj, "TLO", [&](auto& btn){
+            btn.setSize(64, 32);
+            btn.setAlign(LV_ALIGN_RIGHT_MID, 0, -18);
+            btn.setRadius(6);
+            btn.setBgColor(COLOR_GRAY);
+        });
+
+        ui.axisPanels.push_back(panel);
+        ui.axisLabels.push_back(label);
+        ui.axisGhosts.push_back(ghost);
+        ui.axisDROs.push_back(dro);
+        ui.axisZeroBtns.push_back(zeroBtn);
+        ui.axisTLOBtns.push_back(tloBtn);
+    }
+
     ui.rightPanel = new LVContainer(ui.contents->obj, [&](auto& c){
         c.setWidth(LCD_H_RES * 0.45);
         c.setHeight(440);
@@ -166,27 +144,23 @@ inline void buildMainScreen(MainScreenPtrs& ui) {
         c.setPadding(8,8,8,8);
     });
 
-    // Flex layout for function buttons
     ui.funcFlex = new LVFlexContainer(ui.rightPanel->obj, [&](auto& flex){
         flex.setFlexFlow(LV_FLEX_FLOW_ROW_WRAP);
         flex.setFlexAlign(LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         flex.setSizePercent(100, 100);
         flex.setBgColor(COLOR_BLACK);
-        // Add 4 function buttons
         ui.funcBtnUnits =    new LVButton(flex.obj, "IN", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
         ui.funcBtnDia =      new LVButton(flex.obj, "DIA", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
         ui.funcBtn3 =        new LVButton(flex.obj, "", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
         ui.funcBtnSettings = new LVButton(flex.obj, LV_SYMBOL_SETTINGS, [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
     });
 
-    // Tool area (flex row)
     ui.toolFlex = new LVFlexContainer(ui.funcFlex->obj, [&](auto& flex){
         flex.removeStyleAll();
         flex.setFlexFlow(LV_FLEX_FLOW_ROW);
         flex.setPadGap(8);
         flex.setAlign(LV_ALIGN_CENTER);
         flex.setSizeContent();
-        // Tool dropdown + 3 tool buttons
         ui.toolDropdown  = new LVDropdown(flex.obj, [&](auto& dd) {dd.setWidth(150);});
         ui.toolBtnEdit   = new LVButton(flex.obj, LV_SYMBOL_EDIT,  [&](auto& b){ b.setSize(40,40); b.setBgColor(COLOR_GRAY);});
         ui.toolBtnAdd    = new LVButton(flex.obj, LV_SYMBOL_PLUS,  [&](auto& b){ b.setSize(40,40); b.setBgColor(COLOR_GRAY);});

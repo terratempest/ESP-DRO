@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include "tool_manager.h"
 #include "dro_axis.h"
 #include "preferences_wrapper.h"
@@ -19,8 +20,6 @@ public:
 private:
     ToolManager& toolManager;
     DroAxis* axes;
-    DroAxis& xAxis;
-    DroAxis& zAxis;
     PreferencesWrapper& prefs;
     MainScreenPtrs ui;
 
@@ -28,23 +27,17 @@ private:
     bool isMetric           = true;
     bool isDiameterMode     = false;
     int  currentToolIndex   = 0;
-    int  numericInputAxis   = 0; // 0=X, 1=Z
-    bool invertXAxis        = false;
-    bool invertZAxis        = false;
 
-    void showNumericInputPopup(int axis); // 0=X, 1=Z
-    void onSetDroValue(int axis, float userValue);
+    // ---- Methods ----
+
+    // Update all UI displays (DROs, labels, etc.)
     void updateToolDropdown();
     void loadOffsetsFromTool(uint16_t index);
     void saveUnitSettings();
     void loadUnitSettings();
     void goToSleep();
-    void showSettingsPopup();
-    void showToolEditPopup();
     void loadGlobalReferences();
     void saveGlobalReferences();
-    void setToolOffset(int axis);
-    void setGlobalReference(int axis, float desiredDroValue);
-    void setToolOffsetValue(int axis, float userValue);
-
+    void setGlobalReference(int axisIndex, float desiredDroValue);
+    void setToolOffsetValue(int axisIndex, float userValue);
 };
