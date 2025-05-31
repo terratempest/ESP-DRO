@@ -26,7 +26,10 @@ private:
     // UI state
     bool isMetric           = true;
     bool isDiameterMode     = false;
+    bool isIncremental      = false;
     int  currentToolIndex   = 0;
+
+    std::vector<float> incrOffsets;
 
     // ---- Methods ----
 
@@ -40,4 +43,5 @@ private:
     void saveGlobalReferences();
     void setGlobalReference(int axisIndex, float desiredDroValue);
     void setToolOffsetValue(int axisIndex, float userValue);
+    void setIncrementalReference(int axisIndex, float desiredDroValue);
 };

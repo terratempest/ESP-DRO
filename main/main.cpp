@@ -9,10 +9,6 @@
 // UI
 #include "ui_manager.h"
 
-// Platform/HAL
-#include "hardware_abstraction.h"
-#include "interrupts.h"
-
 // LVGL
 extern "C" {
     #include <lvgl.h>
@@ -24,10 +20,9 @@ extern "C" {
 #include "esp_timer.h"
 #include <string>
 #include <iostream>
+#include <driver/gpio.h>
 
 // ------------ Hardware/Global Objects ------------
-
-HardwareAbstraction hw;
 
 DroAxis DROAxes[AXES_COUNT];
 
@@ -46,14 +41,16 @@ extern "C" void app_main() {
     esp_log_level_set("*", ESP_LOG_INFO);
     ESP_LOGI("MAIN", "DRO Firmware Starting...");
 
+    // Initialize ISR Service
+    gpio_install_isr_service(0);
+
     // Setup Axes
     for (int i = 0; i < AXES_COUNT; ++i) {
         DROAxes[i].init(AXES[i].name, AXES[i].pinA, AXES[i].pinB, AXES[i].resolution_um);
-        // Grab preferences if available
-        DROAxes[i].setStepUm(prefsWrapper.getFloat(std::string(DROAxes[i].name) + "_calib"));
-        DROAxes[i].setInvert(prefsWrapper.getBool(std::string(DROAxes[i].name) + "_invert"));
+        DROAxes[i].setStepUm(prefsWrapper.getFloat(std::string(DROAxes[i].name) + "_calib", AXES[i].resolution_um));
+        DROAxes[i].setInvert(prefsWrapper.getBool(std::string(DROAxes[i].name) + "_invert", false));
+        DROAxes[i].begin();
     }
-    setupAxisInterrupts(hw, DROAxes, AXES_COUNT);
 
     // LVGL init
     lv_init();

@@ -16,7 +16,14 @@ void UIManager::init() {
     loadUnitSettings();
     loadGlobalReferences();
 
-    buildMainScreen(ui, axes, AXES_COUNT); // You need to ensure your buildMainScreen takes axis count and fills vectors for DROs/buttons
+    buildMainScreen(ui, axes, AXES_COUNT); 
+
+    // Initialize incremental offsets vector
+    incrOffsets.resize(AXES_COUNT, 0.0f);
+
+    ////////////////////////////////////
+    //         Event Handling         //
+    ////////////////////////////////////
 
     // Attach per-axis event handlers
     for (int i = 0; i < AXES_COUNT; ++i) {
@@ -24,14 +31,18 @@ void UIManager::init() {
         ui.axisDROs[i]->onClick([this, i] {
             NumericInputPopup::show("Set DRO Value",
                 [this, i](float value, bool cancelled) {
-                    if (!cancelled) setGlobalReference(i, value);
+                    if (!cancelled) {
+                        if(isIncremental) setIncrementalReference(i, value);
+                        else setGlobalReference(i, value);
+                    }
                 }
             );
         });
 
         // Zero button: sets axis to 0 at current pos
         ui.axisZeroBtns[i]->onClick([this, i] {
-            setGlobalReference(i, 0.0f);
+            if (isIncremental) setIncrementalReference(i, 0.0f);
+            else setGlobalReference(i, 0.0f);
         });
 
         // Tool offset (TLO) button: set tool offset for this axis
@@ -95,6 +106,17 @@ void UIManager::init() {
         updateDisplay();
     });
 
+    ui.funcBtnAbsIncr->onClick([this] {
+        isIncremental = !isIncremental;
+        ui.funcBtnAbsIncr->setText(isIncremental ? "INCR" : "ABS");
+        if (isIncremental) {
+            for (int i = 0; i < AXES_COUNT; ++i) {
+                incrOffsets[i] = axes[i].getPositionUm() / 1000.0f;
+            }
+        }
+        updateDisplay();
+    });
+
     ui.funcBtnSettings->onClick([this] {
         SettingsPopup::show(prefs, axes, AXES_COUNT, [this] { updateDisplay(); });
     });
@@ -113,16 +135,22 @@ void UIManager::updateDisplay() {
     const auto& tool = toolManager.getTool(currentToolIndex);
 
     for (int i = 0; i < AXES_COUNT; ++i) {
-        float offset = tool.getOffset(i); // getOffset(i) must be provided by Tool (vector-based offsets)
-        float val = (axes[i].getPositionUm() / 1000.0f) - axes[i].getGlobalReference() - offset;
+        float offset = tool.getOffset(i);
+        float axis_pos = axes[i].getPositionUm() / 1000.0f;
 
-        // Unit conversion
-        if (!isMetric) val *= 0.0393701f;
-        // Diameter mode usually applies only to X (axis 0), but generalize if wanted
-        if (isDiameterMode && i == 0) val *= 2.0f;
+        if (isIncremental) {
+            axis_pos -= incrOffsets[i];  // INCR reference
+        } else {
+            axis_pos -= axes[i].getGlobalReference();  // ABS reference
+        }
+
+        axis_pos -= offset; // Apply tool offset
+
+        if (!isMetric) axis_pos *= 0.0393701f;
+        if (isDiameterMode && i == 0) axis_pos *= 2.0f;
 
         char buf[32];
-        snprintf(buf, sizeof(buf), "%.4f", val);
+        snprintf(buf, sizeof(buf), "%.4f", axis_pos);
         ui.axisDROs[i]->setText(buf);
     }
 
@@ -163,6 +191,26 @@ void UIManager::setGlobalReference(int axis, float desiredDroValue) {
     axisObj.setGlobalReference(machine_pos - userValue - tool_offset);
 
     saveGlobalReferences();
+    updateDisplay();
+}
+
+// --- Set global reference (work zero) for given axis ---
+void UIManager::setIncrementalReference(int axis, float desiredDroValue) {
+    auto& axisObj = axes[axis];
+    auto& tool = toolManager.getTool(currentToolIndex);
+
+    float userValue = desiredDroValue;
+
+    // Convert from inches to mm if needed (store internally in mm)
+    if (!isMetric) userValue /= 0.0393701f;
+
+    // Convert from diameter mode to radius (store in axis units, applies to X axis only)
+    if (axis == 0 && isDiameterMode) userValue /= 2.0f;
+
+    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+    float tool_offset = tool.getOffset(axis);
+
+    incrOffsets[axis] = machine_pos - userValue - tool_offset;
     updateDisplay();
 }
 

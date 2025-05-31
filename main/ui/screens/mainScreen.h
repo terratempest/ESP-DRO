@@ -28,7 +28,7 @@ struct MainScreenPtrs {
     LVFlexContainer* funcFlex = nullptr;
     LVButton*    funcBtnUnits = nullptr;
     LVButton*    funcBtnDia = nullptr;
-    LVButton*    funcBtn3 = nullptr;
+    LVButton*    funcBtnAbsIncr = nullptr;
     LVButton*    funcBtnSettings = nullptr;
 
     LVFlexContainer* toolFlex = nullptr;
@@ -149,9 +149,9 @@ inline void buildMainScreen(MainScreenPtrs& ui, DroAxis* axes, int axis_count) {
         flex.setFlexAlign(LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
         flex.setSizePercent(100, 100);
         flex.setBgColor(COLOR_BLACK);
-        ui.funcBtnUnits =    new LVButton(flex.obj, "IN", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
+        ui.funcBtnUnits =    new LVButton(flex.obj, "IN",  [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
         ui.funcBtnDia =      new LVButton(flex.obj, "DIA", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
-        ui.funcBtn3 =        new LVButton(flex.obj, "", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
+        ui.funcBtnAbsIncr =  new LVButton(flex.obj, "ABS", [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
         ui.funcBtnSettings = new LVButton(flex.obj, LV_SYMBOL_SETTINGS, [&](auto& b){ b.setSize(64,64); b.setBgColor(COLOR_GRAY);});
     });
 
