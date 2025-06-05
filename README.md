@@ -1,7 +1,7 @@
 ESP-DRO
 
 This is a digital readout (DRO) program for ESP32 powered TFT/Touch displays, designed for lathes (or mills) using TTL quadrature glass scales and a 7" Sunton touchscreen (800x480 with GT911 touch).
-The coded in C++ and uses LVGL for the UI. Designed this mainly for my lathe where it's just handling 2 axes but code is modular and can be setup for additional axes provided you have enough free pins on your board to wire them up. 
+This is coded in C++ and uses LVGL for the UI. Designed this mainly for my lathe where it's just handling 2 axes but code is modular and can be setup for additional axes provided you have enough free pins on your board to wire them up. 
 
 ![20250604_204626](https://github.com/user-attachments/assets/758a3c3e-7225-4b4a-93ea-753a7d6e396a)
 
