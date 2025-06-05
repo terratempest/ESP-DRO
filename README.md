@@ -1,62 +1,65 @@
-# ESP-DRO
+ESP-DRO
 
-Dependencies: 
+This is a digital readout (DRO) program for ESP32 powered TFT/Touch displays, designed for lathes (or mills) using TTL quadrature glass scales and a 7" Sunton touchscreen (800x480 with GT911 touch).
+The coded in C++ and uses LVGL for the UI. Designed this mainly for my lathe where it's just handling 2 axes but code is modular and can be setup for additional axes provided you have enough free pins on your board to wire them up. 
 
-    lvgl/lvgl: ^9.2.2
+![20250604_204626](https://github.com/user-attachments/assets/758a3c3e-7225-4b4a-93ea-753a7d6e396a)
 
-    espressif/esp_lcd_touch_gt911: ^1.1.3
+What It Does:
 
+* Reads multiple glass scale/TTL encoders in real-time (configurable axes)
+* Shows all positions on a touchscreen DRO interface
+* Stores global & per tool offsets
+* Toggle between mm/inch, radius/diameter, incremental/absolute positioning
+* All calibration, inversion, and tool data are persistent via NVS
 
-This firmware is for a Digital Read Out (DRO) system. It runs on an ESP32 and provides a touchscreen UI to display
+Hardware Required
 
+* ESP32-S3 powered LCD / Touch dev board (must have PSRAM) (RGB, GT911 touch)
+* Linear scales with TTL quadrature output (5V)
 
-Key Components & Structure
+Setup (Quick Start)
+1. Install VSCode.
+2. Install & configure ESP-IDF extension.
+3. Clone Repository.
+4. Open repository folder in VSCode.
+4. Hardware Config
+    
+    Edit config.h to match your hardware:
+    
+        const AxisConfig AXES[] = {
+            {"x", 17, 11, 5.0f}, // {name, pinA, pinB, resolution_um}
+            {"z", 12, 13, 5.0f}, // add or remove axes as needed
+        };
+    
+    Check all LCD/touch/encoder pins, adjust as needed for your board and wiring.
+    Should work out of the box for the Sunton ESP32-S3 7" 800*480 TN Display with Touch
 
-    main.cpp
+5. Build and Flash
 
-        Entry point. Initializes hardware, LVGL graphics/UI, loads tool data, sets up axis interrupts, and runs the main loop to keep the UI updated.
+Using the DRO
 
-    config.h
+* All axes show up automatically.
+* Tap the gear icon for calibration (set um/step and invert per axis).
+* Use the tool dropdown to add, remove, or rename tools. Each tool stores unique offsets configurable with the TLO button per axis.
+* Tap "IN" to switch between mm/inch, "DIA" for radius/diameter mode (only affects first axis).
+* Tap ABS to toggle between incremental / absolute positioning. Incremental lets you use a temporary zero offset without effecting absolute position.
+* All values are stored in flash and restored on reboot.
 
-        Central hardware and feature configuration: pin assignments, scale resolution, display size, max tools, NVS (storage) parameters, and feature toggles.
+Customizing
 
-    dro_axis.cpp
+* To add axes: Edit the AXES[] array in config.h and wire up more encoders.
+* Change CONFIG_MAX_TOOLS if you need more tool slots.
+* Everything else is in the UI—no code changes needed for common settings.
 
-        Encapsulates logic for each linear axis. Handles GPIO setup, encoder signal decoding via interrupts, position tracking in microns, and zeroing.
+Structure
 
-    tool_manager.cpp
+    main.cpp: Hardware setup and main loop
 
-        Manages a list of tools with name and individual X/Z offsets. Provides add, remove, rename, and persistent save/load (via NVS) functions.
+    config.h: All machine/display pin assignments and settings
 
-    preferences_wrapper.cpp
+    dro_axis.*: Handles encoder reading and axis state
 
-        Wraps ESP32 NVS (non-volatile storage) for easy read/write of strings, floats, and integers with schema version control.
+    tool_manager.*: Tool storage and logic
 
-    app_display.cpp
-
-        Initializes the TFT display and capacitive touch panel. Sets up LVGL drawing buffers, backlight, RGB panel, and touch drivers.
-
-    hardware_abstraction.cpp
-
-        Provides a generic interface for attaching/detaching GPIO interrupts, and fetching system time in ms/us.
-
-    interrupts.cpp
-
-        Sets up and manages ISR services for the axes using the hardware abstraction layer.
-
-    ui_manager.cpp
-
-        Implements the main UI logic and event handling:
-
-            Displays current axis positions, tool names, offsets.
-
-            Allows zeroing, unit toggle, diameter/radius toggle, tool selection/editing/adding/removal.
-
-            Handles popups for numeric input (for manual DRO value setting).
-
-            Manages display sleep/wake behavior.
-
-            Updates UI elements on every loop iteration.
-
-
-<a href="https://www.buymeacoffee.com/terratempest" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+    ui_manager.*, mainScreen.h: LVGL UI and event handling
