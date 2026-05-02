@@ -2,22 +2,24 @@
 
 #include "config.h"
 #include <driver/gpio.h>
-#include <esp_attr.h>
 #include <esp_check.h>
 #include <esp_log.h>
 
 static const char* TAG = "DroAxis";
+static constexpr uint32_t PCNT_GLITCH_FILTER_NS = 1250;
 
 DroAxis::DroAxis()
     : name("init"), pinA(-1), pinB(-1), step_um(1.0f), position_um(0.0f),
-      pcnt_unit(PCNT_UNIT_0), accumulated(0), invertAxis(false), configured(false) {}
+      unitIndex(0), accumulated(0), invertAxis(false), configured(false) {}
 
-void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisStepUm, pcnt_unit_t unit) {
+void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisStepUm, int axisUnitIndex) {
+    releaseHardware();
+
     name = axisName;
     pinA = axisPinA;
     pinB = axisPinB;
     step_um = axisStepUm;
-    pcnt_unit = unit;
+    unitIndex = axisUnitIndex;
     accumulated.store(0, std::memory_order_relaxed);
     invertAxis = false;
     position_um = 0.0f;
@@ -25,59 +27,102 @@ void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisS
 }
 
 void DroAxis::configureHardware() {
-    pcnt_config_t cfg0 = {
-        .pulse_gpio_num = pinA,
-        .ctrl_gpio_num  = pinB,
-        .lctrl_mode     = invertAxis ? PCNT_MODE_KEEP    : PCNT_MODE_REVERSE,
-        .hctrl_mode     = invertAxis ? PCNT_MODE_REVERSE : PCNT_MODE_KEEP,
-        .pos_mode       = PCNT_COUNT_INC,
-        .neg_mode       = PCNT_COUNT_DEC,
-        .counter_h_lim  = PCNT_H_LIM_VAL,
-        .counter_l_lim  = PCNT_L_LIM_VAL,
-        .unit           = pcnt_unit,
-        .channel        = PCNT_CHANNEL_0,
+    pcnt_unit_config_t unitConfig = {
+        .low_limit = PCNT_L_LIM_VAL,
+        .high_limit = PCNT_H_LIM_VAL,
+        .intr_priority = 0,
+        .flags = {
+            .accum_count = 0,
+        },
     };
-    ESP_ERROR_CHECK(pcnt_unit_config(&cfg0));
+    ESP_ERROR_CHECK(pcnt_new_unit(&unitConfig, &pcntUnit));
 
-    pcnt_config_t cfg1 = {
-        .pulse_gpio_num = pinB,
-        .ctrl_gpio_num  = pinA,
-        .lctrl_mode     = invertAxis ? PCNT_MODE_REVERSE : PCNT_MODE_KEEP,
-        .hctrl_mode     = invertAxis ? PCNT_MODE_KEEP    : PCNT_MODE_REVERSE,
-        .pos_mode       = PCNT_COUNT_INC,
-        .neg_mode       = PCNT_COUNT_DEC,
-        .counter_h_lim  = PCNT_H_LIM_VAL,
-        .counter_l_lim  = PCNT_L_LIM_VAL,
-        .unit           = pcnt_unit,
-        .channel        = PCNT_CHANNEL_1,
+    pcnt_glitch_filter_config_t filterConfig = {
+        .max_glitch_ns = PCNT_GLITCH_FILTER_NS,
     };
-    ESP_ERROR_CHECK(pcnt_unit_config(&cfg1));
+    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(pcntUnit, &filterConfig));
 
-    ESP_ERROR_CHECK(pcnt_set_filter_value(pcnt_unit, 100));
-    ESP_ERROR_CHECK(pcnt_filter_enable(pcnt_unit));
+    pcnt_chan_config_t channelAConfig = {
+        .edge_gpio_num = pinA,
+        .level_gpio_num = pinB,
+    };
+    ESP_ERROR_CHECK(pcnt_new_channel(pcntUnit, &channelAConfig, &channelA));
+
+    pcnt_chan_config_t channelBConfig = {
+        .edge_gpio_num = pinB,
+        .level_gpio_num = pinA,
+    };
+    ESP_ERROR_CHECK(pcnt_new_channel(pcntUnit, &channelBConfig, &channelB));
+
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(
+        channelA,
+        PCNT_CHANNEL_EDGE_ACTION_INCREASE,
+        PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(
+        channelA,
+        invertAxis ? PCNT_CHANNEL_LEVEL_ACTION_INVERSE : PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+        invertAxis ? PCNT_CHANNEL_LEVEL_ACTION_KEEP : PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(
+        channelB,
+        PCNT_CHANNEL_EDGE_ACTION_INCREASE,
+        PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(
+        channelB,
+        invertAxis ? PCNT_CHANNEL_LEVEL_ACTION_KEEP : PCNT_CHANNEL_LEVEL_ACTION_INVERSE,
+        invertAxis ? PCNT_CHANNEL_LEVEL_ACTION_INVERSE : PCNT_CHANNEL_LEVEL_ACTION_KEEP));
+
+    ESP_ERROR_CHECK(pcnt_unit_enable(pcntUnit));
+}
+
+void DroAxis::releaseHardware() {
+    if (!pcntUnit) {
+        channelA = nullptr;
+        channelB = nullptr;
+        return;
+    }
+
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_unit_stop(pcntUnit));
+    }
+    ESP_ERROR_CHECK(pcnt_unit_disable(pcntUnit));
+
+    if (channelA) {
+        ESP_ERROR_CHECK(pcnt_del_channel(channelA));
+        channelA = nullptr;
+    }
+    if (channelB) {
+        ESP_ERROR_CHECK(pcnt_del_channel(channelB));
+        channelB = nullptr;
+    }
+
+    ESP_ERROR_CHECK(pcnt_del_unit(pcntUnit));
+    pcntUnit = nullptr;
+    configured = false;
 }
 
 void DroAxis::begin() {
     configureHardware();
 
-    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
-    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
     accumulated.store(0, std::memory_order_relaxed);
-    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_unit_start(pcntUnit));
     configured = true;
 
     ESP_LOGI(TAG, "PCNT unit %d configured for axis '%s' (pinA=%d, pinB=%d)",
-             pcnt_unit, name, pinA, pinB);
+             unitIndex, name, pinA, pinB);
 }
 
 void DroAxis::zero() {
-    portENTER_CRITICAL(&counterMux);
-    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
-    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_unit_stop(pcntUnit));
+        ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
+    }
     accumulated.store(0, std::memory_order_relaxed);
     position_um = 0.0f;
-    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
-    portEXIT_CRITICAL(&counterMux);
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_unit_start(pcntUnit));
+    }
 }
 
 void DroAxis::setStepUm(float step) {
@@ -103,11 +148,12 @@ void DroAxis::setInvert(bool invert) {
     invertAxis = invert;
 
     if (configured) {
-        ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
+        releaseHardware();
         configureHardware();
-        ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
         accumulated.store(static_cast<int64_t>(preservedPosition / step_um), std::memory_order_relaxed);
-        ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+        ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
+        ESP_ERROR_CHECK(pcnt_unit_start(pcntUnit));
+        configured = true;
     }
 }
 
@@ -116,26 +162,29 @@ bool DroAxis::getInvert() const {
 }
 
 int64_t DroAxis::snapshotCounts() {
-    int16_t hwCount = 0;
-    portENTER_CRITICAL(&counterMux);
-    ESP_ERROR_CHECK(pcnt_get_counter_value(pcnt_unit, &hwCount));
+    if (!configured) {
+        return accumulated.load(std::memory_order_relaxed);
+    }
+
+    int hwCount = 0;
+    ESP_ERROR_CHECK(pcnt_unit_get_count(pcntUnit, &hwCount));
     if (hwCount != 0) {
         accumulated.fetch_add(hwCount, std::memory_order_relaxed);
-        ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+        ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
     }
-    int64_t total = accumulated.load(std::memory_order_relaxed);
-    portEXIT_CRITICAL(&counterMux);
-    return total;
+    return accumulated.load(std::memory_order_relaxed);
 }
 
 void DroAxis::setPositionUm(float newPos) {
     position_um = newPos;
-    portENTER_CRITICAL(&counterMux);
-    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
-    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_unit_stop(pcntUnit));
+        ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
+    }
     accumulated.store(static_cast<int64_t>(newPos / step_um), std::memory_order_relaxed);
-    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
-    portEXIT_CRITICAL(&counterMux);
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_unit_start(pcntUnit));
+    }
 }
 
 float DroAxis::getPositionUm() {
@@ -143,7 +192,5 @@ float DroAxis::getPositionUm() {
 }
 
 void DroAxis::simulateStep(bool forward) {
-    portENTER_CRITICAL(&counterMux);
     accumulated.fetch_add(forward ? 1 : -1, std::memory_order_relaxed);
-    portEXIT_CRITICAL(&counterMux);
 }

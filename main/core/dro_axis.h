@@ -1,16 +1,13 @@
 #pragma once
 #include <atomic>
 #include <stdint.h>
-#include <esp_attr.h>
-#include <driver/pcnt.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/portmacro.h>
+#include <driver/pulse_cnt.h>
 
 class DroAxis {
 public:
     DroAxis();
 
-    void init(const char* name, int pinA, int pinB, float step_um, pcnt_unit_t unit);
+    void init(const char* name, int pinA, int pinB, float step_um, int unitIndex);
 
     const char* name;
     int pinA, pinB;
@@ -36,13 +33,16 @@ public:
     void simulateStep(bool forward);
 
 private:
-    pcnt_unit_t pcnt_unit;
+    int unitIndex;
+    pcnt_unit_handle_t pcntUnit = nullptr;
+    pcnt_channel_handle_t channelA = nullptr;
+    pcnt_channel_handle_t channelB = nullptr;
     mutable std::atomic<int64_t> accumulated;
     bool invertAxis;
     float globalReference_ = 0.0f;
     bool configured = false;
-    mutable portMUX_TYPE counterMux = portMUX_INITIALIZER_UNLOCKED;
 
     void configureHardware();
+    void releaseHardware();
     int64_t snapshotCounts();
 };

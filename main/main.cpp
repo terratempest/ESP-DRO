@@ -60,7 +60,7 @@ extern "C" void app_main() {
             AXES[i].pinA,
             AXES[i].pinB,
             AXES[i].resolution_um,
-            static_cast<pcnt_unit_t>(i)  // PCNT_UNIT_0, PCNT_UNIT_1, ...
+            i
         );
         DROAxes[i].setStepUm(prefsWrapper.getFloat(std::string(DROAxes[i].name) + "_calib", AXES[i].resolution_um));
         DROAxes[i].setInvert(prefsWrapper.getBool(std::string(DROAxes[i].name) + "_invert", false));
