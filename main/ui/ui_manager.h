@@ -30,6 +30,11 @@ private:
     int  currentToolIndex   = 0;
 
     std::vector<float> incrOffsets;
+    std::vector<std::string> lastAxisTexts;
+    std::string lastUnitsText;
+    std::string lastDiaText;
+    std::string lastAbsIncrText;
+    int lastDropdownSelection = -1;
 
     // ---- Methods ----
 

@@ -8,6 +8,8 @@ public:
     PreferencesWrapper(const char* ns, bool readOnly = false);
     ~PreferencesWrapper();
 
+    void begin();
+
     void        putString(const std::string& key, const std::string& value);
     std::string getString(const std::string& key, const std::string& defaultValue = "");
 
@@ -24,8 +26,8 @@ public:
     void        setSchemaVersion(uint32_t version);
 
 private:
-    bool schemaIsOutdated();
     nvs_handle_t handle = 0;
     std::string namespace_;
     bool readOnly_;
+    bool opened_ = false;
 };

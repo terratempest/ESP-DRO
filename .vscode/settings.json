@@ -5,7 +5,7 @@
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
   ],
-  "idf.portWin": "COM11",
+  "idf.portWin": "COM12",
   "idf.toolsPathWin": "C:\\Users\\spwal\\.espressif",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
@@ -83,5 +83,6 @@
     "typeinfo": "cpp",
     "variant": "cpp"
   },
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "idf.currentSetup": "C:\\Users\\spwal\\esp\\v5.4.1\\esp-idf"
 }

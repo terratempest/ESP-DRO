@@ -1,53 +1,83 @@
 #include "preferences_wrapper.h"
-#include <cstring>
-#include "esp_log.h"
+
 #include "config.h"
+#include <esp_check.h>
+#include <esp_log.h>
+#include <inttypes.h>
+#include <cstring>
+
+static const char* TAG = "Preferences";
 
 PreferencesWrapper::PreferencesWrapper(const char* ns, bool readOnly)
-    : namespace_(ns), readOnly_(readOnly) {
+    : namespace_(ns), readOnly_(readOnly) {}
 
-    nvs_flash_init(); // Ensure NVS is initialized
-    nvs_open(namespace_.c_str(), readOnly ? NVS_READONLY : NVS_READWRITE, &handle);
-    
-    if(getSchemaVersion() != NVS_VERSION){
-        printf("NVS schema version mismatch, erasing NVS!\n");
-        nvs_flash_deinit();
-        nvs_flash_erase();
-        nvs_flash_init(); // Ensure NVS is initialized
-        nvs_open(namespace_.c_str(), readOnly ? NVS_READONLY : NVS_READWRITE, &handle);
-        setSchemaVersion(NVS_VERSION);
+PreferencesWrapper::~PreferencesWrapper() {
+    if (opened_) {
+        nvs_close(handle);
     }
 }
-PreferencesWrapper::~PreferencesWrapper() {
-    nvs_close(handle);
+
+void PreferencesWrapper::begin() {
+    if (opened_) {
+        return;
+    }
+
+    ESP_ERROR_CHECK(nvs_open(namespace_.c_str(), readOnly_ ? NVS_READONLY : NVS_READWRITE, &handle));
+    opened_ = true;
+
+    uint32_t version = getSchemaVersion();
+    if (version == 0) {
+        if (!readOnly_) {
+            setSchemaVersion(NVS_VERSION);
+        }
+        ESP_LOGI(TAG, "Initialized NVS schema version %" PRIu32, static_cast<uint32_t>(NVS_VERSION));
+    } else if (version < NVS_VERSION) {
+        ESP_LOGW(TAG, "Migrating NVS schema from %" PRIu32 " to %" PRIu32,
+                 version, static_cast<uint32_t>(NVS_VERSION));
+        if (!readOnly_) {
+            setSchemaVersion(NVS_VERSION);
+        }
+    } else if (version > NVS_VERSION) {
+        ESP_LOGW(TAG, "NVS schema version %" PRIu32 " is newer than firmware schema %" PRIu32,
+                 version, static_cast<uint32_t>(NVS_VERSION));
+    }
 }
+
 void PreferencesWrapper::putString(const std::string& key, const std::string& value) {
-    esp_err_t err = nvs_set_str(handle, key.c_str(), value.c_str());
-    nvs_commit(handle);
+    ESP_ERROR_CHECK(nvs_set_str(handle, key.c_str(), value.c_str()));
+    ESP_ERROR_CHECK(nvs_commit(handle));
 }
+
 std::string PreferencesWrapper::getString(const std::string& key, const std::string& defaultValue) {
     size_t required_size = 0;
     esp_err_t err = nvs_get_str(handle, key.c_str(), NULL, &required_size);
-    if (err != ESP_OK || required_size == 0) return defaultValue;
+    if (err != ESP_OK || required_size == 0) {
+        return defaultValue;
+    }
+
     std::string result(required_size, '\0');
-    nvs_get_str(handle, key.c_str(), &result[0], &required_size);
+    ESP_ERROR_CHECK(nvs_get_str(handle, key.c_str(), &result[0], &required_size));
     result.resize(strlen(result.c_str()));
     return result;
 }
+
 void PreferencesWrapper::putFloat(const std::string& key, float value) {
-    esp_err_t err = nvs_set_blob(handle, key.c_str(), &value, sizeof(value));
-    nvs_commit(handle);
+    ESP_ERROR_CHECK(nvs_set_blob(handle, key.c_str(), &value, sizeof(value)));
+    ESP_ERROR_CHECK(nvs_commit(handle));
 }
+
 float PreferencesWrapper::getFloat(const std::string& key, float defaultValue) {
     float value = defaultValue;
     size_t len = sizeof(value);
     esp_err_t err = nvs_get_blob(handle, key.c_str(), &value, &len);
-    return (err == ESP_OK) ? value : defaultValue;
+    return (err == ESP_OK && len == sizeof(value)) ? value : defaultValue;
 }
+
 void PreferencesWrapper::putUShort(const std::string& key, uint16_t value) {
-    esp_err_t err = nvs_set_u16(handle, key.c_str(), value);
-    nvs_commit(handle);
+    ESP_ERROR_CHECK(nvs_set_u16(handle, key.c_str(), value));
+    ESP_ERROR_CHECK(nvs_commit(handle));
 }
+
 uint16_t PreferencesWrapper::getUShort(const std::string& key, uint16_t defaultValue) {
     uint16_t value = defaultValue;
     esp_err_t err = nvs_get_u16(handle, key.c_str(), &value);
@@ -56,14 +86,14 @@ uint16_t PreferencesWrapper::getUShort(const std::string& key, uint16_t defaultV
 
 void PreferencesWrapper::putBool(const std::string& key, bool value) {
     uint8_t val = value ? 1 : 0;
-    esp_err_t err = nvs_set_u8(handle, key.c_str(), val);
-    nvs_commit(handle);
+    ESP_ERROR_CHECK(nvs_set_u8(handle, key.c_str(), val));
+    ESP_ERROR_CHECK(nvs_commit(handle));
 }
 
 bool PreferencesWrapper::getBool(const std::string& key, bool defaultValue) {
     uint8_t val = defaultValue ? 1 : 0;
     esp_err_t err = nvs_get_u8(handle, key.c_str(), &val);
-    return val != 0;
+    return (err == ESP_OK) ? (val != 0) : defaultValue;
 }
 
 uint32_t PreferencesWrapper::getSchemaVersion() {
@@ -71,8 +101,8 @@ uint32_t PreferencesWrapper::getSchemaVersion() {
     esp_err_t err = nvs_get_u32(handle, "schema_version", &version);
     return (err == ESP_OK) ? version : 0;
 }
-void PreferencesWrapper::setSchemaVersion(uint32_t version) {
-    nvs_set_u32(handle, "schema_version", version);
-    nvs_commit(handle);
-}
 
+void PreferencesWrapper::setSchemaVersion(uint32_t version) {
+    ESP_ERROR_CHECK(nvs_set_u32(handle, "schema_version", version));
+    ESP_ERROR_CHECK(nvs_commit(handle));
+}

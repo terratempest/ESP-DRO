@@ -22,6 +22,11 @@ const AxisConfig AXES[] = {
 };
 #define AXES_COUNT (sizeof(AXES)/sizeof(AXES[0])) // Number of axes defined
 
+// PCNT overflow limits — 16-bit signed hardware counter
+// Set well within ±32767 to give ISR time to fire
+#define PCNT_H_LIM_VAL  20000
+#define PCNT_L_LIM_VAL -20000
+
 // Number of tools supported (for array allocation)
 #define CONFIG_MAX_TOOLS 50
 

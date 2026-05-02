@@ -27,7 +27,7 @@ public:
 private:
     std::vector<Tool> tools;
     PreferencesWrapper& prefs;
-    static constexpr size_t MAX_TOOLS = 32;
+    static constexpr size_t MAX_TOOLS = CONFIG_MAX_TOOLS;
 
     void saveTool(size_t index) const;
     void loadTool(size_t index);

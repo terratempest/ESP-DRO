@@ -20,6 +20,7 @@ void UIManager::init() {
 
     // Initialize incremental offsets vector
     incrOffsets.resize(AXES_COUNT, 0.0f);
+    lastAxisTexts.resize(AXES_COUNT);
 
     ////////////////////////////////////
     //         Event Handling         //
@@ -151,12 +152,34 @@ void UIManager::updateDisplay() {
 
         char buf[32];
         snprintf(buf, sizeof(buf), "%.4f", axis_pos);
-        ui.axisDROs[i]->setText(buf);
+        if (lastAxisTexts[i] != buf) {
+            ui.axisDROs[i]->setText(buf);
+            lastAxisTexts[i] = buf;
+        }
     }
 
-    ui.funcBtnUnits->setText(isMetric ? "mm" : "in");
-    ui.funcBtnDia->setText(isDiameterMode ? "DIA" : "RAD");
-    ui.toolDropdown->setSelected(currentToolIndex);
+    std::string unitsText = isMetric ? "mm" : "in";
+    if (lastUnitsText != unitsText) {
+        ui.funcBtnUnits->setText(unitsText);
+        lastUnitsText = unitsText;
+    }
+
+    std::string diaText = isDiameterMode ? "DIA" : "RAD";
+    if (lastDiaText != diaText) {
+        ui.funcBtnDia->setText(diaText);
+        lastDiaText = diaText;
+    }
+
+    std::string absIncrText = isIncremental ? "INCR" : "ABS";
+    if (lastAbsIncrText != absIncrText) {
+        ui.funcBtnAbsIncr->setText(absIncrText);
+        lastAbsIncrText = absIncrText;
+    }
+
+    if (lastDropdownSelection != currentToolIndex) {
+        ui.toolDropdown->setSelected(currentToolIndex);
+        lastDropdownSelection = currentToolIndex;
+    }
 }
 
 void UIManager::updateToolDropdown() {
@@ -165,6 +188,7 @@ void UIManager::updateToolDropdown() {
         options.push_back(toolManager.getTool(i).name);
     ui.toolDropdown->setOptions(options);
     ui.toolDropdown->setSelected(currentToolIndex);
+    lastDropdownSelection = currentToolIndex;
 }
 
 void UIManager::loadOffsetsFromTool(uint16_t index) {

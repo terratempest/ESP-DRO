@@ -77,9 +77,9 @@ void SettingsPopup::show(PreferencesWrapper& prefs, DroAxis* axes, int axesCount
         k.setSize(LCD_H_RES, LCD_V_RES/3);
         k.setAlign(LV_ALIGN_BOTTOM_MID, 0, 0);
         k.setVisible(false);
-        k.onEvent(LV_EVENT_READY,  [&k]{ k.setVisible(false); });
-        k.onEvent(LV_EVENT_CANCEL, [&k]{ k.setVisible(false); });
     });
+    kb->onEvent(LV_EVENT_READY,  [kb]{ kb->setVisible(false); });
+    kb->onEvent(LV_EVENT_CANCEL, [kb]{ kb->setVisible(false); });
 
     for (auto* ta : numInputs) {
         ta->onEvent(LV_EVENT_FOCUSED, [=]{

@@ -92,8 +92,13 @@ public:
                 lv_dropdown_get_selected_str(dd, buf, sizeof(buf));
                 (*fn)(idx, std::string(buf));
             }
+            static void cleanup(lv_event_t* e) {
+                delete static_cast<std::function<void(uint16_t, std::string)>*>(lv_event_get_user_data(e));
+            }
         };
-        lv_obj_add_event_cb(obj, Handler::callback, LV_EVENT_VALUE_CHANGED, new std::function<void(uint16_t, std::string)>(fn));
+        auto* storedFn = new std::function<void(uint16_t, std::string)>(fn);
+        lv_obj_add_event_cb(obj, Handler::callback, LV_EVENT_VALUE_CHANGED, storedFn);
+        lv_obj_add_event_cb(obj, Handler::cleanup, LV_EVENT_DELETE, storedFn);
     }
     // Overload: no parameters
     void onChanged(std::function<void()> fn) {
@@ -102,7 +107,12 @@ public:
                 auto* fn = static_cast<std::function<void()>*>(lv_event_get_user_data(e));
                 (*fn)();
             }
+            static void cleanup(lv_event_t* e) {
+                delete static_cast<std::function<void()>*>(lv_event_get_user_data(e));
+            }
         };
-        lv_obj_add_event_cb(obj, Handler::callback, LV_EVENT_VALUE_CHANGED, new std::function<void()>(fn));
+        auto* storedFn = new std::function<void()>(fn);
+        lv_obj_add_event_cb(obj, Handler::callback, LV_EVENT_VALUE_CHANGED, storedFn);
+        lv_obj_add_event_cb(obj, Handler::cleanup, LV_EVENT_DELETE, storedFn);
     }
 };

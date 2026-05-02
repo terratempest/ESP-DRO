@@ -8,6 +8,7 @@
 #include <esp_lcd_touch_gt911.h>
 #include <driver/i2c.h>
 #include <esp_log.h>
+#include <esp_heap_caps.h>
 #include <stdlib.h>
 #include <cstring>
 
@@ -16,16 +17,20 @@ static esp_lcd_touch_handle_t tp = NULL;
 
 // LVGL flush callback for the RGB panel
 static void my_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p) {
-    esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p);
+    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_p));
     lv_display_flush_ready(disp);
 }
 
 void app_display_init() {
     // LVGL buffer allocation (in PSRAM if available)
     static lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(LCD_H_RES * 40 * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+    ESP_ERROR_CHECK(buf1 ? ESP_OK : ESP_ERR_NO_MEM);
+
     static lv_draw_buf_t draw_buf;
     lv_draw_buf_init(&draw_buf, LCD_H_RES, 40, LV_COLOR_FORMAT_NATIVE, LCD_H_RES, buf1, LCD_H_RES * 40 * sizeof(lv_color_t));
+
     lv_display_t *disp = lv_display_create(LCD_H_RES, LCD_V_RES);
+    ESP_ERROR_CHECK(disp ? ESP_OK : ESP_ERR_NO_MEM);
     lv_display_set_draw_buffers(disp, &draw_buf, NULL);
 
     // Backlight GPIO (set to output, enable backlight)
@@ -36,8 +41,8 @@ void app_display_init() {
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE
     };
-    gpio_config(&bk_gpio_config);
-    gpio_set_level(LCD_PIN_BK_LIGHT, 1);
+    ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
+    ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, 1));
 
     // RGB panel config (all fields in order)
     esp_lcd_rgb_panel_config_t panel_config = {
@@ -99,8 +104,8 @@ void app_display_init() {
         .master = {.clk_speed = 400000},
         .clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL
     };
-    i2c_param_config(TOUCH_I2C_NUM, &i2c_conf);
-    i2c_driver_install(TOUCH_I2C_NUM, I2C_MODE_MASTER, 0, 0, 0);
+    ESP_ERROR_CHECK(i2c_param_config(TOUCH_I2C_NUM, &i2c_conf));
+    ESP_ERROR_CHECK(i2c_driver_install(TOUCH_I2C_NUM, I2C_MODE_MASTER, 0, 0, 0));
 
     // Touch panel config (all fields in order)
     esp_lcd_touch_config_t tp_cfg = {
@@ -142,7 +147,6 @@ void app_display_init() {
     lv_indev_set_display(indev_touch, disp);
 
     lv_indev_set_read_cb(indev_touch, [](lv_indev_t* indev, lv_indev_data_t* data) {
-        extern esp_lcd_touch_handle_t tp; 
         uint16_t x = 0, y = 0;
         uint8_t touched = 0;
         

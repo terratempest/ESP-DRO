@@ -5,7 +5,6 @@
 ToolManager::ToolManager(PreferencesWrapper& prefs_ref)
     : prefs(prefs_ref)
 {
-    loadTools();
 }
 
 bool ToolManager::addTool(const std::string& name, const std::vector<float>& offsets) {

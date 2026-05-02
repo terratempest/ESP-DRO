@@ -1,89 +1,149 @@
 #include "dro_axis.h"
+
+#include "config.h"
 #include <driver/gpio.h>
 #include <esp_attr.h>
+#include <esp_check.h>
+#include <esp_log.h>
+
+static const char* TAG = "DroAxis";
 
 DroAxis::DroAxis()
-    : name("init"), pinA(-1), pinB(-1), step_um(1.0f), position_um(0), last_state(0), invertAxis(false) {}
+    : name("init"), pinA(-1), pinB(-1), step_um(1.0f), position_um(0.0f),
+      pcnt_unit(PCNT_UNIT_0), accumulated(0), invertAxis(false), configured(false) {}
 
-void DroAxis::init(const char* name, int pinA, int pinB, float step_um) {
-    this->name = name;
-    this->pinA = pinA;
-    this->pinB = pinB;
-    this->step_um = step_um;
-    this->position_um = 0.0f;
-    this->tick_count = 0;
-    this->invertAxis = false;
+void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisStepUm, pcnt_unit_t unit) {
+    name = axisName;
+    pinA = axisPinA;
+    pinB = axisPinB;
+    step_um = axisStepUm;
+    pcnt_unit = unit;
+    accumulated.store(0, std::memory_order_relaxed);
+    invertAxis = false;
+    position_um = 0.0f;
+    configured = false;
+}
+
+void DroAxis::configureHardware() {
+    pcnt_config_t cfg0 = {
+        .pulse_gpio_num = pinA,
+        .ctrl_gpio_num  = pinB,
+        .lctrl_mode     = invertAxis ? PCNT_MODE_KEEP    : PCNT_MODE_REVERSE,
+        .hctrl_mode     = invertAxis ? PCNT_MODE_REVERSE : PCNT_MODE_KEEP,
+        .pos_mode       = PCNT_COUNT_INC,
+        .neg_mode       = PCNT_COUNT_DEC,
+        .counter_h_lim  = PCNT_H_LIM_VAL,
+        .counter_l_lim  = PCNT_L_LIM_VAL,
+        .unit           = pcnt_unit,
+        .channel        = PCNT_CHANNEL_0,
+    };
+    ESP_ERROR_CHECK(pcnt_unit_config(&cfg0));
+
+    pcnt_config_t cfg1 = {
+        .pulse_gpio_num = pinB,
+        .ctrl_gpio_num  = pinA,
+        .lctrl_mode     = invertAxis ? PCNT_MODE_REVERSE : PCNT_MODE_KEEP,
+        .hctrl_mode     = invertAxis ? PCNT_MODE_KEEP    : PCNT_MODE_REVERSE,
+        .pos_mode       = PCNT_COUNT_INC,
+        .neg_mode       = PCNT_COUNT_DEC,
+        .counter_h_lim  = PCNT_H_LIM_VAL,
+        .counter_l_lim  = PCNT_L_LIM_VAL,
+        .unit           = pcnt_unit,
+        .channel        = PCNT_CHANNEL_1,
+    };
+    ESP_ERROR_CHECK(pcnt_unit_config(&cfg1));
+
+    ESP_ERROR_CHECK(pcnt_set_filter_value(pcnt_unit, 100));
+    ESP_ERROR_CHECK(pcnt_filter_enable(pcnt_unit));
 }
 
 void DroAxis::begin() {
-    // Configure pins as input with pullup, interrupts disabled initially
-    gpio_config_t io_conf = {};
-    io_conf.intr_type    = GPIO_INTR_DISABLE;
-    io_conf.mode         = GPIO_MODE_INPUT;
-    io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
-    io_conf.pin_bit_mask = (1ULL << pinA) | (1ULL << pinB);
-    gpio_config(&io_conf);
+    configureHardware();
 
-    // Read initial state
-    uint8_t sA = gpio_get_level((gpio_num_t)pinA);
-    uint8_t sB = gpio_get_level((gpio_num_t)pinB);
-    last_state.store((sA << 1) | sB, std::memory_order_relaxed);
+    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    accumulated.store(0, std::memory_order_relaxed);
+    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+    configured = true;
 
-    // Attach ISRs directly, passing 'this'
-    gpio_isr_handler_add((gpio_num_t)pinA, generic_axis_isr, this);
-    gpio_isr_handler_add((gpio_num_t)pinB, generic_axis_isr, this);
-
-    // Now enable interrupts
-    gpio_set_intr_type((gpio_num_t)pinA, GPIO_INTR_ANYEDGE);
-    gpio_set_intr_type((gpio_num_t)pinB, GPIO_INTR_ANYEDGE);
+    ESP_LOGI(TAG, "PCNT unit %d configured for axis '%s' (pinA=%d, pinB=%d)",
+             pcnt_unit, name, pinA, pinB);
 }
 
 void DroAxis::zero() {
+    portENTER_CRITICAL(&counterMux);
+    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    accumulated.store(0, std::memory_order_relaxed);
     position_um = 0.0f;
-    tick_count = 0;
+    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+    portEXIT_CRITICAL(&counterMux);
 }
 
-void DroAxis::setStepUm(float step) { step_um = step; }
-float DroAxis::getStepUm() const { return step_um; }
+void DroAxis::setStepUm(float step) {
+    if (step > 0.0f) {
+        step_um = step;
+    }
+}
 
-void DroAxis::setInvert(bool invert) { invertAxis = invert; }
-bool DroAxis::getInvert() const { return invertAxis; }
+float DroAxis::getStepUm() const {
+    return step_um;
+}
+
+void DroAxis::setInvert(bool invert) {
+    if (invertAxis == invert) {
+        return;
+    }
+
+    float preservedPosition = 0.0f;
+    if (configured) {
+        preservedPosition = getPositionUm();
+    }
+
+    invertAxis = invert;
+
+    if (configured) {
+        ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
+        configureHardware();
+        ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+        accumulated.store(static_cast<int64_t>(preservedPosition / step_um), std::memory_order_relaxed);
+        ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+    }
+}
+
+bool DroAxis::getInvert() const {
+    return invertAxis;
+}
+
+int64_t DroAxis::snapshotCounts() {
+    int16_t hwCount = 0;
+    portENTER_CRITICAL(&counterMux);
+    ESP_ERROR_CHECK(pcnt_get_counter_value(pcnt_unit, &hwCount));
+    if (hwCount != 0) {
+        accumulated.fetch_add(hwCount, std::memory_order_relaxed);
+        ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    }
+    int64_t total = accumulated.load(std::memory_order_relaxed);
+    portEXIT_CRITICAL(&counterMux);
+    return total;
+}
 
 void DroAxis::setPositionUm(float newPos) {
     position_um = newPos;
-    tick_count = static_cast<int32_t>(newPos / step_um);
+    portENTER_CRITICAL(&counterMux);
+    ESP_ERROR_CHECK(pcnt_counter_pause(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_counter_clear(pcnt_unit));
+    accumulated.store(static_cast<int64_t>(newPos / step_um), std::memory_order_relaxed);
+    ESP_ERROR_CHECK(pcnt_counter_resume(pcnt_unit));
+    portEXIT_CRITICAL(&counterMux);
 }
 
-float DroAxis::getPositionUm() const {
-    return tick_count * step_um;
+float DroAxis::getPositionUm() {
+    return static_cast<float>(snapshotCounts()) * step_um;
 }
 
 void DroAxis::simulateStep(bool forward) {
-    tick_count += forward ? 1 : -1;
-    position_um = tick_count * step_um;
-}
-
-void IRAM_ATTR DroAxis::handleInterrupt() {
-    // Read both pins
-    uint8_t sA = gpio_get_level((gpio_num_t)pinA) & 0x1;  // Only use LSB (0 or 1)
-    uint8_t sB = gpio_get_level((gpio_num_t)pinB) & 0x1;
-    uint8_t state = ((sA << 1) | sB) & 0x3;
-    uint8_t prev = last_state.load(std::memory_order_relaxed) & 0x3;
-
-    static const int8_t table[4][4] = {
-        { 0,  -1,  1,  0 },
-        { 1,   0,  0, -1 },
-        {-1,   0,  0,  1 },
-        { 0,   1, -1,  0 }
-    };
-    int8_t dir = table[prev][state];
-    if (invertAxis) dir = -dir;
-    if (dir != 0) {
-        tick_count += dir;
-    }
-    last_state.store(state, std::memory_order_relaxed);
-}
-
-extern "C" void IRAM_ATTR generic_axis_isr(void* arg) {
-    if (arg) static_cast<DroAxis*>(arg)->handleInterrupt();
+    portENTER_CRITICAL(&counterMux);
+    accumulated.fetch_add(forward ? 1 : -1, std::memory_order_relaxed);
+    portEXIT_CRITICAL(&counterMux);
 }

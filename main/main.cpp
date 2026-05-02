@@ -15,9 +15,11 @@ extern "C" {
 }
 
 #include "esp_log.h"
+#include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
 #include <string>
 #include <iostream>
 #include <driver/gpio.h>
@@ -41,12 +43,25 @@ extern "C" void app_main() {
     esp_log_level_set("*", ESP_LOG_INFO);
     ESP_LOGI("MAIN", "DRO Firmware Starting...");
 
-    // Initialize ISR Service
-    gpio_install_isr_service(0);
+    esp_err_t nvsErr = nvs_flash_init();
+    if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvsErr = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvsErr);
+    prefsWrapper.begin();
+    toolManager.loadTools();
 
     // Setup Axes
+    // In app_main, replace the axis init loop:
     for (int i = 0; i < AXES_COUNT; ++i) {
-        DROAxes[i].init(AXES[i].name, AXES[i].pinA, AXES[i].pinB, AXES[i].resolution_um);
+        DROAxes[i].init(
+            AXES[i].name,
+            AXES[i].pinA,
+            AXES[i].pinB,
+            AXES[i].resolution_um,
+            static_cast<pcnt_unit_t>(i)  // PCNT_UNIT_0, PCNT_UNIT_1, ...
+        );
         DROAxes[i].setStepUm(prefsWrapper.getFloat(std::string(DROAxes[i].name) + "_calib", AXES[i].resolution_um));
         DROAxes[i].setInvert(prefsWrapper.getBool(std::string(DROAxes[i].name) + "_invert", false));
         DROAxes[i].begin();
@@ -73,14 +88,17 @@ extern "C" void app_main() {
 
     ESP_LOGI("MAIN", "Setup complete!");
 
+    uint32_t lastUiUpdateMs = 0;
+
     // Main loop (run forever)
     while (1) {
         lv_timer_handler(); // Handles all LVGL tasks
         vTaskDelay(pdMS_TO_TICKS(5)); // 5ms delay
 
-        // Update UI with latest axis/tool states
-        if (uiManager) {
+        uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+        if (uiManager && nowMs - lastUiUpdateMs >= 33) {
             uiManager->updateDisplay();
+            lastUiUpdateMs = nowMs;
         }
 
     }

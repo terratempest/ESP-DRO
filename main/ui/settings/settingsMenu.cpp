@@ -6,16 +6,17 @@ std::vector<SettingDef> makeSettingsTable(PreferencesWrapper& prefs, DroAxis* ax
 
     for (int i = 0; i < axisCount; ++i) {
         std::string axisName = axes[i].name; // e.g. "x", "y", "z"
+        float defaultStepUm = axes[i].getStepUm();
 
         // Calibration setting
         table.push_back({
             axisName + " Axis Calibration (um/unit)",
             axisName + "_calib",
             SettingType::Number,
-            5.0f, // default
+            defaultStepUm,
             false,
-            [&prefs, axis = &axes[i], key = axisName + "_calib"] {
-                axis->setStepUm(prefs.getFloat(key.c_str(), 5.0f));
+            [&prefs, axis = &axes[i], key = axisName + "_calib", defaultStepUm] {
+                axis->setStepUm(prefs.getFloat(key.c_str(), defaultStepUm));
             }
         });
 

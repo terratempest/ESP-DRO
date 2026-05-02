@@ -16,6 +16,8 @@ public:
 
     LVObjectBase(lv_obj_t* o) : obj(o) {}
 
+    virtual ~LVObjectBase() = default;
+
     // ---- Layout & Sizing ----
     void setSize(int w, int h)                      { lv_obj_set_size(obj, w, h); }
     void setWidth(int w)                            { lv_obj_set_width(obj, w); }
@@ -138,8 +140,13 @@ public:
                 auto* fn = static_cast<std::function<void()>*>(lv_event_get_user_data(e));
                 if(fn) (*fn)();
             }
+            static void cleanup(lv_event_t* e) {
+                delete static_cast<std::function<void()>*>(lv_event_get_user_data(e));
+            }
         };
-        lv_obj_add_event_cb(obj, Handler::callback, code, new std::function<void()>(fn));
+        auto* storedFn = new std::function<void()>(fn);
+        lv_obj_add_event_cb(obj, Handler::callback, code, storedFn);
+        lv_obj_add_event_cb(obj, Handler::cleanup, LV_EVENT_DELETE, storedFn);
     }
 
     // Click helper
@@ -160,7 +167,7 @@ public:
 
     // ---- Misc ----
     void removeStyleAll()                                              { lv_obj_remove_style_all(obj); }
-    void del()                                                         { lv_obj_del(obj); }
+    void del()                                                         { if (obj) { lv_obj_delete_async(obj); obj = nullptr; } }
     void clearChildren()                                               { lv_obj_clean(obj); }
 
     // ---- Utility ----
