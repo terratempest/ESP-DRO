@@ -14,7 +14,12 @@ class LVObjectBase {
 public:
     lv_obj_t* obj;
 
-    LVObjectBase(lv_obj_t* o) : obj(o) {}
+    // Wrappers are heap-owned by the LVGL object's lifetime.
+    LVObjectBase(lv_obj_t* o) : obj(o) {
+        lv_obj_add_event_cb(obj, [](lv_event_t* e) {
+            delete static_cast<LVObjectBase*>(lv_event_get_user_data(e));
+        }, LV_EVENT_DELETE, this);
+    }
 
     virtual ~LVObjectBase() = default;
 
@@ -167,7 +172,7 @@ public:
 
     // ---- Misc ----
     void removeStyleAll()                                              { lv_obj_remove_style_all(obj); }
-    void del()                                                         { if (obj) { lv_obj_delete_async(obj); obj = nullptr; } }
+    void del()                                                         { if (obj) { lv_obj_t* deleteObj = obj; obj = nullptr; lv_obj_delete_async(deleteObj); } }
     void clearChildren()                                               { lv_obj_clean(obj); }
 
     // ---- Utility ----

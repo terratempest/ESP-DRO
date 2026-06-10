@@ -42,7 +42,7 @@ size_t ToolManager::toolCount() const {
 }
 
 void ToolManager::saveToolCount() const {
-    prefs.putUShort("tool_count", tools.size());
+    prefs.putUShort("tool_count", static_cast<uint16_t>(tools.size()));
 }
 
 void ToolManager::loadToolCount() {
@@ -66,10 +66,12 @@ void ToolManager::saveTool(size_t index) const {
 }
 
 void ToolManager::saveTools() const {
+    prefs.beginBatch();
     saveToolCount();
     for (size_t i = 0; i < tools.size(); ++i) {
         saveTool(i);
     }
+    prefs.commitBatch();
 }
 
 void ToolManager::loadTool(size_t index) {
@@ -100,6 +102,9 @@ void ToolManager::loadTools() {
         std::vector<float> zero_offsets(AXES_COUNT, 0.0f);
         addTool("Tool 1", zero_offsets);
         count = 1;
+    } else if (count > MAX_TOOLS) {
+        count = MAX_TOOLS;
+        prefs.putUShort("tool_count", static_cast<uint16_t>(count));
     }
     for (size_t i = 0; i < count; ++i) {
         loadTool(i);

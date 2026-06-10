@@ -37,12 +37,14 @@ private:
     pcnt_unit_handle_t pcntUnit = nullptr;
     pcnt_channel_handle_t channelA = nullptr;
     pcnt_channel_handle_t channelB = nullptr;
-    mutable std::atomic<int64_t> accumulated;
+    mutable std::atomic<int64_t> countOffset;
+    mutable std::atomic<int64_t> cachedCounts;
     bool invertAxis;
     float globalReference_ = 0.0f;
     bool configured = false;
 
     void configureHardware();
     void releaseHardware();
+    bool applyChannelActions(bool desiredInvert);
     int64_t snapshotCounts();
 };

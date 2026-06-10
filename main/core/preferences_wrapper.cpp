@@ -45,7 +45,7 @@ void PreferencesWrapper::begin() {
 
 void PreferencesWrapper::putString(const std::string& key, const std::string& value) {
     ESP_ERROR_CHECK(nvs_set_str(handle, key.c_str(), value.c_str()));
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    commitIfNeeded();
 }
 
 std::string PreferencesWrapper::getString(const std::string& key, const std::string& defaultValue) {
@@ -63,7 +63,7 @@ std::string PreferencesWrapper::getString(const std::string& key, const std::str
 
 void PreferencesWrapper::putFloat(const std::string& key, float value) {
     ESP_ERROR_CHECK(nvs_set_blob(handle, key.c_str(), &value, sizeof(value)));
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    commitIfNeeded();
 }
 
 float PreferencesWrapper::getFloat(const std::string& key, float defaultValue) {
@@ -75,7 +75,7 @@ float PreferencesWrapper::getFloat(const std::string& key, float defaultValue) {
 
 void PreferencesWrapper::putUShort(const std::string& key, uint16_t value) {
     ESP_ERROR_CHECK(nvs_set_u16(handle, key.c_str(), value));
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    commitIfNeeded();
 }
 
 uint16_t PreferencesWrapper::getUShort(const std::string& key, uint16_t defaultValue) {
@@ -87,7 +87,7 @@ uint16_t PreferencesWrapper::getUShort(const std::string& key, uint16_t defaultV
 void PreferencesWrapper::putBool(const std::string& key, bool value) {
     uint8_t val = value ? 1 : 0;
     ESP_ERROR_CHECK(nvs_set_u8(handle, key.c_str(), val));
-    ESP_ERROR_CHECK(nvs_commit(handle));
+    commitIfNeeded();
 }
 
 bool PreferencesWrapper::getBool(const std::string& key, bool defaultValue) {
@@ -104,5 +104,31 @@ uint32_t PreferencesWrapper::getSchemaVersion() {
 
 void PreferencesWrapper::setSchemaVersion(uint32_t version) {
     ESP_ERROR_CHECK(nvs_set_u32(handle, "schema_version", version));
+    commitIfNeeded();
+}
+
+void PreferencesWrapper::beginBatch() {
+    batchActive_ = true;
+    batchDirty_ = false;
+}
+
+void PreferencesWrapper::commitBatch() {
+    if (batchActive_ && batchDirty_) {
+        ESP_ERROR_CHECK(nvs_commit(handle));
+    }
+    batchActive_ = false;
+    batchDirty_ = false;
+}
+
+void PreferencesWrapper::cancelBatch() {
+    batchActive_ = false;
+    batchDirty_ = false;
+}
+
+void PreferencesWrapper::commitIfNeeded() {
+    if (batchActive_) {
+        batchDirty_ = true;
+        return;
+    }
     ESP_ERROR_CHECK(nvs_commit(handle));
 }

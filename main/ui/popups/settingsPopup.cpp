@@ -1,8 +1,34 @@
 #include "settingsPopup.h"
 #include "lv_helpers/LVHelpers.h"
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
+#include <cctype>
 #include <vector>
 #include <string>
 #include "config.h"
+
+namespace {
+bool parseSettingNumber(const std::string& text, float& value) {
+    errno = 0;
+    char* end = nullptr;
+    value = strtof(text.c_str(), &end);
+    if (end == text.c_str() || errno == ERANGE || !std::isfinite(value)) {
+        return false;
+    }
+    while (*end != '\0') {
+        if (!std::isspace(static_cast<unsigned char>(*end))) {
+            return false;
+        }
+        ++end;
+    }
+    return true;
+}
+
+bool settingRequiresPositiveValue(const SettingDef& setting) {
+    return setting.key.find("_calib") != std::string::npos;
+}
+}
 
 void SettingsPopup::show(PreferencesWrapper& prefs, DroAxis* axes, int axesCount, std::function<void()> onClose) {
     auto* overlay = new LVContainer(lv_scr_act(), [](auto& p){
@@ -72,6 +98,12 @@ void SettingsPopup::show(PreferencesWrapper& prefs, DroAxis* axes, int axesCount
         });
     }
 
+    auto* errorLabel = new LVLabel(panel->obj, "", [&](auto& l){
+        l.setAlign(LV_ALIGN_BOTTOM_MID, 0, 0);
+        l.setTextColor(lv_palette_main(LV_PALETTE_RED));
+        l.setHidden(true);
+    });
+
     // Shared numeric keyboard
     auto* kb = new LVKeyboardNumeric(overlay->obj, [&](auto& k){
         k.setSize(LCD_H_RES, LCD_V_RES/3);
@@ -95,18 +127,53 @@ void SettingsPopup::show(PreferencesWrapper& prefs, DroAxis* axes, int axesCount
         b.setBgColor(COLOR_GRAY);
         // Capture settingsTable, numInputs, boolInputs **by value**
         b.onClick([=, &prefs]{
-            int numIdx = 0, boolIdx = 0;
+            int numIdx = 0;
+            std::vector<float> parsedNumbers;
+            parsedNumbers.reserve(numInputs.size());
+
             for (size_t i = 0; i < settingsTable.size(); ++i) {
                 const auto& s = settingsTable[i];
-                if (s.type == SettingType::Number && numIdx < (int)numInputs.size()) {
-                    float v = strtof(numInputs[numIdx++]->getText().c_str(), nullptr);
-                    prefs.putFloat(s.key.c_str(), v);
-                    if (s.onChange) s.onChange();
+                if (s.type != SettingType::Number) {
+                    continue;
+                }
+                if (numIdx >= (int)numInputs.size()) {
+                    errorLabel->setText("Missing numeric setting");
+                    errorLabel->setHidden(false);
+                    return;
+                }
+
+                float v = 0.0f;
+                if (!parseSettingNumber(numInputs[numIdx++]->getText(), v)) {
+                    errorLabel->setText((s.name + " must be a valid number").c_str());
+                    errorLabel->setHidden(false);
+                    return;
+                }
+                if (settingRequiresPositiveValue(s) && v <= 0.0f) {
+                    errorLabel->setText((s.name + " must be greater than zero").c_str());
+                    errorLabel->setHidden(false);
+                    return;
+                }
+                parsedNumbers.push_back(v);
+            }
+
+            numIdx = 0;
+            int boolIdx = 0;
+            std::vector<std::function<void()>> pendingChanges;
+            prefs.beginBatch();
+            for (size_t i = 0; i < settingsTable.size(); ++i) {
+                const auto& s = settingsTable[i];
+                if (s.type == SettingType::Number && numIdx < (int)parsedNumbers.size()) {
+                    prefs.putFloat(s.key.c_str(), parsedNumbers[numIdx++]);
+                    if (s.onChange) pendingChanges.push_back(s.onChange);
                 } else if (s.type == SettingType::Bool && boolIdx < (int)boolInputs.size()) {
                     bool v = boolInputs[boolIdx++]->isChecked();
                     prefs.putBool(s.key.c_str(), v);
-                    if (s.onChange) s.onChange();
+                    if (s.onChange) pendingChanges.push_back(s.onChange);
                 }
+            }
+            prefs.commitBatch();
+            for (const auto& onChange : pendingChanges) {
+                onChange();
             }
             overlay->del();
             if (onClose) onClose();

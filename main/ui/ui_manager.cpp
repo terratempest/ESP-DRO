@@ -36,7 +36,8 @@ void UIManager::init() {
                         if(isIncremental) setIncrementalReference(i, value);
                         else setGlobalReference(i, value);
                     }
-                }
+                },
+                getDisplayedAxisValue(i)
             );
         });
 
@@ -51,7 +52,8 @@ void UIManager::init() {
             NumericInputPopup::show("Set Tool Offset",
                 [this, i](float value, bool cancelled) {
                     if (!cancelled) setToolOffsetValue(i, value);
-                }
+                },
+                getDisplayedAxisValue(i)
             );
         });
     }
@@ -79,7 +81,10 @@ void UIManager::init() {
         for (int i = 0; i < AXES_COUNT; ++i)
             offsets[i] = axes[i].getPositionUm() / 1000.0f - axes[i].getGlobalReference();
 
-        toolManager.addTool(name, offsets);
+        if (!toolManager.addTool(name, offsets)) {
+            showStatusMessage("Maximum tool count reached");
+            return;
+        }
         currentToolIndex = toolManager.toolCount() - 1;
         updateToolDropdown();
         updateDisplay();
@@ -133,22 +138,8 @@ void UIManager::init() {
 // --- Display and Logic ---
 
 void UIManager::updateDisplay() {
-    const auto& tool = toolManager.getTool(currentToolIndex);
-
     for (int i = 0; i < AXES_COUNT; ++i) {
-        float offset = tool.getOffset(i);
-        float axis_pos = axes[i].getPositionUm() / 1000.0f;
-
-        if (isIncremental) {
-            axis_pos -= incrOffsets[i];  // INCR reference
-        } else {
-            axis_pos -= axes[i].getGlobalReference();  // ABS reference
-        }
-
-        axis_pos -= offset; // Apply tool offset
-
-        if (!isMetric) axis_pos *= 0.0393701f;
-        if (isDiameterMode && i == 0) axis_pos *= 2.0f;
+        float axis_pos = getDisplayedAxisValue(i);
 
         char buf[32];
         snprintf(buf, sizeof(buf), "%.4f", axis_pos);
@@ -194,6 +185,45 @@ void UIManager::updateToolDropdown() {
 void UIManager::loadOffsetsFromTool(uint16_t index) {
     if (index < toolManager.toolCount())
         currentToolIndex = index;
+}
+
+void UIManager::showStatusMessage(const char* message) {
+    auto* overlay = new LVPanel(lv_scr_act(), [](auto& p) {
+        p.setSize(320, 96);
+        p.setAlign(LV_ALIGN_CENTER);
+        p.setBgColor(COLOR_BLACK);
+        p.setBgOpa(LV_OPA_COVER);
+        p.setBorderColor(COLOR_GRAY);
+        p.setBorderWidth(2);
+        p.setFlag(LV_OBJ_FLAG_CLICKABLE);
+    });
+
+    new LVLabel(overlay->obj, message, [](auto& l) {
+        l.setAlign(LV_ALIGN_CENTER);
+        l.setTextColor(COLOR_YELLOW_GREEN);
+    });
+
+    overlay->onClick([=] {
+        overlay->del();
+    });
+}
+
+float UIManager::getDisplayedAxisValue(int axis) {
+    const auto& tool = toolManager.getTool(currentToolIndex);
+    float axis_pos = axes[axis].getPositionUm() / 1000.0f;
+
+    if (isIncremental) {
+        axis_pos -= incrOffsets[axis];
+    } else {
+        axis_pos -= axes[axis].getGlobalReference();
+    }
+
+    axis_pos -= tool.getOffset(axis);
+
+    if (!isMetric) axis_pos *= 0.0393701f;
+    if (isDiameterMode && axis == 0) axis_pos *= 2.0f;
+
+    return axis_pos;
 }
 
 // --- Set global reference (work zero) for given axis ---

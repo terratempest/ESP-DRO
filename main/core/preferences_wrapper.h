@@ -25,9 +25,17 @@ public:
     uint32_t    getSchemaVersion();
     void        setSchemaVersion(uint32_t version);
 
+    void        beginBatch();
+    void        commitBatch();
+    void        cancelBatch();
+
 private:
     nvs_handle_t handle = 0;
     std::string namespace_;
     bool readOnly_;
     bool opened_ = false;
+    bool batchActive_ = false;
+    bool batchDirty_ = false;
+
+    void commitIfNeeded();
 };

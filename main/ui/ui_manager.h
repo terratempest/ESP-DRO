@@ -41,11 +41,13 @@ private:
     // Update all UI displays (DROs, labels, etc.)
     void updateToolDropdown();
     void loadOffsetsFromTool(uint16_t index);
+    void showStatusMessage(const char* message);
     void saveUnitSettings();
     void loadUnitSettings();
     void goToSleep();
     void loadGlobalReferences();
     void saveGlobalReferences();
+    float getDisplayedAxisValue(int axisIndex);
     void setGlobalReference(int axisIndex, float desiredDroValue);
     void setToolOffsetValue(int axisIndex, float userValue);
     void setIncrementalReference(int axisIndex, float desiredDroValue);

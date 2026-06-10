@@ -1,8 +1,14 @@
 #include "numericInputPopup.h"
 #include "lv_helpers/LVHelpers.h" 
 #include "config.h"
+#include <cstdlib>
+#include <cstdio>
+#include <string>
 
 void NumericInputPopup::show(const std::string& title, Callback onComplete, float initialValue) {
+    char initialText[32];
+    snprintf(initialText, sizeof(initialText), "%.4f", initialValue);
+
     auto* overlay = new LVContainer(lv_scr_act(), [](auto& p){
         p.setSize(LCD_H_RES, LCD_V_RES);
         p.setTransparentBg();
@@ -47,7 +53,7 @@ void NumericInputPopup::show(const std::string& title, Callback onComplete, floa
         });
     });
 
-    auto* ta = new LVTextarea(panel->obj, "", [&](auto& t){
+    auto* ta = new LVTextarea(panel->obj, initialText, [&](auto& t){
         t.setSizePercent(100, 10);
         t.setOneLine(true);
         t.setRadius(0);
@@ -59,7 +65,11 @@ void NumericInputPopup::show(const std::string& title, Callback onComplete, floa
         k.setAlign(LV_ALIGN_BOTTOM_MID, 0, 0);
         k.setTextarea(ta->obj);
         k.onEvent(LV_EVENT_READY, [=]{
-            float val = strtof(ta->getText().c_str(), nullptr);
+            std::string text = ta->getText();
+            float val = strtof(text.c_str(), nullptr);
+            if (text == initialText) {
+                val = initialValue;
+            }
             onComplete(val, false);
             overlay->del();
         });
