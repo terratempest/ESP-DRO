@@ -9,11 +9,17 @@
 #include <driver/i2c.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <stdlib.h>
 #include <cstring>
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t tp = NULL;
+static uint32_t last_touch_ms = 0;
+
+uint32_t app_display_get_last_touch_ms() {
+    return last_touch_ms;
+}
 
 // LVGL flush callback for the RGB panel
 static void my_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p) {
@@ -158,6 +164,7 @@ void app_display_init() {
         esp_lcd_touch_get_coordinates(tp, &x, &y, NULL, &touched, 1);
 
         if (touched) {
+            last_touch_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
             data->point.x = x;
             data->point.y = y;
             data->state = LV_INDEV_STATE_PRESSED;

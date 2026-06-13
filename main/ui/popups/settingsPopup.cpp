@@ -1,5 +1,9 @@
 #include "settingsPopup.h"
 #include "lv_helpers/LVHelpers.h"
+#include "app_services.h"
+#include "wifi_manager.h"
+#include "ota_server.h"
+#include "wifiConnectionPopup.h"
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -26,7 +30,17 @@ bool parseSettingNumber(const std::string& text, float& value) {
 }
 
 bool settingRequiresPositiveValue(const SettingDef& setting) {
-    return setting.key.find("_calib") != std::string::npos;
+    return setting.key.find("_calib") != std::string::npos ||
+           setting.key == SCREEN_OFF_MIN_KEY;
+}
+
+std::string networkStatusText() {
+    if (!gWifiManager) {
+        return "Unavailable";
+    }
+    return gWifiManager->getSsid().empty()
+        ? gWifiManager->getStatusText()
+        : gWifiManager->getStatusText() + " - " + gWifiManager->getSsid();
 }
 }
 
@@ -97,6 +111,29 @@ void SettingsPopup::show(PreferencesWrapper& prefs, DroAxis* axes, int axesCount
             }
         });
     }
+
+    LVLabel* wifiValueLabel = nullptr;
+    auto* wifiRow = new LVContainer(settingsContainer->obj, [&](auto& l){
+        l.setWidthPercent(80);
+        l.setHeight(38);
+        l.setFlag(LV_OBJ_FLAG_CLICKABLE);
+        l.setBgColor(COLOR_GRAY);
+        l.setBgOpa(LV_OPA_30);
+        l.setRadius(6);
+        l.setPadAll(8);
+        new LVLabel(l.obj, "Wi-Fi", [](auto& label){ label.setAlign(LV_ALIGN_LEFT_MID); });
+        wifiValueLabel = new LVLabel(l.obj, networkStatusText(), [](auto& label){
+            label.setAlign(LV_ALIGN_RIGHT_MID, -24, 0);
+        });
+        new LVLabel(l.obj, ">", [](auto& label){ label.setAlign(LV_ALIGN_RIGHT_MID); });
+    });
+    wifiRow->onClick([=]{
+        WifiConnectionPopup::show([=]{
+            if (wifiValueLabel) {
+                wifiValueLabel->setText(networkStatusText());
+            }
+        });
+    });
 
     auto* errorLabel = new LVLabel(panel->obj, "", [&](auto& l){
         l.setAlign(LV_ALIGN_BOTTOM_MID, 0, 0);

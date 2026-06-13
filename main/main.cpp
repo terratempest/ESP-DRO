@@ -5,6 +5,9 @@
 #include "tool_manager.h"
 #include "preferences_wrapper.h"
 #include "app_display.h"
+#include "wifi_manager.h"
+#include "ota_server.h"
+#include "app_services.h"
 
 // UI
 #include "ui_manager.h"
@@ -16,6 +19,7 @@ extern "C" {
 
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -30,8 +34,12 @@ DroAxis DROAxes[AXES_COUNT];
 
 PreferencesWrapper prefsWrapper(NVS_NAMESPACE);
 ToolManager toolManager(prefsWrapper);
+WifiManager appWifiManager(prefsWrapper);
+OtaServer appOtaServer(appWifiManager);
 
 UIManager* uiManager = nullptr;
+WifiManager* gWifiManager = &appWifiManager;
+OtaServer* gOtaServer = &appOtaServer;
 
 // Forward: LVGL tick glue
 void lv_tick_handler(void* arg);
@@ -51,6 +59,8 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK(nvsErr);
     prefsWrapper.begin();
     toolManager.loadTools();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(appWifiManager.begin());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(appOtaServer.begin());
 
     // Setup Axes
     // In app_main, replace the axis init loop:
@@ -74,6 +84,7 @@ extern "C" void app_main() {
     // Setup UI
     uiManager = new UIManager(toolManager, DROAxes, prefsWrapper); 
     uiManager->init();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_mark_app_valid_cancel_rollback());
 
     // Set up LVGL tick (every 5ms) using esp_timer
     const esp_timer_create_args_t lvgl_tick_timer_args = {

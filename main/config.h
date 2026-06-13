@@ -40,6 +40,8 @@ const AxisConfig AXES[] = {
 //----------------------------------------
 #define NVS_NAMESPACE "settings"
 #define NVS_VERSION   1 
+#define AUTO_SCREEN_OFF_KEY "auto_screen_off"
+#define SCREEN_OFF_MIN_KEY  "screen_off_min"
 
 //----------------------------------------
 // LOGGING

@@ -1,9 +1,18 @@
 #include "ui_manager.h"
 #include "config.h"
+#include "app_display.h"
 #include <driver/gpio.h>
+#include <esp_timer.h>
+#include <cmath>
 #include <cstdio>
 #include "lv_helpers/LVHelpers.h"
 #include "screens/mainScreen.h"
+
+namespace {
+uint32_t currentMillis() {
+    return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+}
+}
 
 UIManager::UIManager(ToolManager& tm, DroAxis* axes, PreferencesWrapper& p)
     : toolManager(tm), axes(axes), prefs(p)
@@ -21,6 +30,12 @@ void UIManager::init() {
     // Initialize incremental offsets vector
     incrOffsets.resize(AXES_COUNT, 0.0f);
     lastAxisTexts.resize(AXES_COUNT);
+    lastRawAxisPositions.resize(AXES_COUNT, 0.0f);
+    for (int i = 0; i < AXES_COUNT; ++i) {
+        lastRawAxisPositions[i] = axes[i].getPositionUm();
+    }
+    lastActivityMs = currentMillis();
+    lastSeenTouchMs = app_display_get_last_touch_ms();
 
     ////////////////////////////////////
     //         Event Handling         //
@@ -138,6 +153,9 @@ void UIManager::init() {
 // --- Display and Logic ---
 
 void UIManager::updateDisplay() {
+    uint32_t nowMs = currentMillis();
+    updateActivityState(nowMs);
+
     for (int i = 0; i < AXES_COUNT; ++i) {
         float axis_pos = getDisplayedAxisValue(i);
 
@@ -170,6 +188,13 @@ void UIManager::updateDisplay() {
     if (lastDropdownSelection != currentToolIndex) {
         ui.toolDropdown->setSelected(currentToolIndex);
         lastDropdownSelection = currentToolIndex;
+    }
+
+    if (screenAwake && isAutoScreenOffEnabled()) {
+        uint32_t timeoutMs = getAutoScreenOffTimeoutMs();
+        if (nowMs - lastActivityMs >= timeoutMs) {
+            goToSleep();
+        }
     }
 }
 
@@ -328,15 +353,84 @@ void UIManager::loadUnitSettings() {
 }
 
 void UIManager::goToSleep() {
+    if (!screenAwake) {
+        return;
+    }
+
+    screenAwake = false;
     gpio_set_level(LCD_PIN_BK_LIGHT, 0);
-    auto* wake_layer = new LVPanel(lv_scr_act(), [](auto& p) {
+    wakeLayer = new LVPanel(lv_scr_act(), [](auto& p) {
         p.setSize(LCD_H_RES, LCD_V_RES);
         p.setTransparentBg();
         p.clearFlag(LV_OBJ_FLAG_SCROLLABLE);
         p.setFlag(LV_OBJ_FLAG_CLICKABLE);
     });
-    wake_layer->onClick([=] {
-        gpio_set_level(LCD_PIN_BK_LIGHT, 1);
-        wake_layer->del();
+    wakeLayer->onClick([this] {
+        wakeScreen();
     });
+}
+
+void UIManager::wakeScreen() {
+    gpio_set_level(LCD_PIN_BK_LIGHT, 1);
+    screenAwake = true;
+
+    if (wakeLayer) {
+        LVPanel* layer = wakeLayer;
+        wakeLayer = nullptr;
+        layer->del();
+    }
+
+    markActivity(currentMillis());
+}
+
+void UIManager::markActivity(uint32_t nowMs) {
+    lastActivityMs = nowMs;
+}
+
+void UIManager::updateActivityState(uint32_t nowMs) {
+    bool axisMoved = false;
+    for (int i = 0; i < AXES_COUNT; ++i) {
+        float rawPosition = axes[i].getPositionUm();
+        if (i >= (int)lastRawAxisPositions.size()) {
+            lastRawAxisPositions.resize(AXES_COUNT, 0.0f);
+        }
+        if (std::fabs(rawPosition - lastRawAxisPositions[i]) > 0.0f) {
+            axisMoved = true;
+            lastRawAxisPositions[i] = rawPosition;
+        }
+    }
+
+    if (axisMoved) {
+        if (!screenAwake) {
+            wakeScreen();
+            return;
+        }
+        markActivity(nowMs);
+    }
+
+    uint32_t lastTouchMs = app_display_get_last_touch_ms();
+    if (lastTouchMs != 0 && lastTouchMs != lastSeenTouchMs) {
+        lastSeenTouchMs = lastTouchMs;
+        markActivity(nowMs);
+    }
+}
+
+bool UIManager::isAutoScreenOffEnabled() {
+    return prefs.getBool(AUTO_SCREEN_OFF_KEY, true);
+}
+
+uint32_t UIManager::getAutoScreenOffTimeoutMs() {
+    float timeoutMinutes = prefs.getFloat(SCREEN_OFF_MIN_KEY, 10.0f);
+    if (timeoutMinutes <= 0.0f || !std::isfinite(timeoutMinutes)) {
+        timeoutMinutes = 10.0f;
+    }
+
+    double timeoutMs = static_cast<double>(timeoutMinutes) * 60.0 * 1000.0;
+    if (timeoutMs >= 4294967295.0) {
+        return 4294967295UL;
+    }
+    if (timeoutMs < 1.0) {
+        return 1;
+    }
+    return static_cast<uint32_t>(timeoutMs);
 }

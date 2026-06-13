@@ -1,10 +1,13 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <stdint.h>
 #include "tool_manager.h"
 #include "dro_axis.h"
 #include "preferences_wrapper.h"
 #include "screens/mainScreen.h"
+
+class LVPanel;
 
 extern "C" {
     #include <lvgl.h>
@@ -35,6 +38,11 @@ private:
     std::string lastDiaText;
     std::string lastAbsIncrText;
     int lastDropdownSelection = -1;
+    bool screenAwake = true;
+    LVPanel* wakeLayer = nullptr;
+    uint32_t lastActivityMs = 0;
+    uint32_t lastSeenTouchMs = 0;
+    std::vector<float> lastRawAxisPositions;
 
     // ---- Methods ----
 
@@ -45,6 +53,11 @@ private:
     void saveUnitSettings();
     void loadUnitSettings();
     void goToSleep();
+    void wakeScreen();
+    void markActivity(uint32_t nowMs);
+    void updateActivityState(uint32_t nowMs);
+    bool isAutoScreenOffEnabled();
+    uint32_t getAutoScreenOffTimeoutMs();
     void loadGlobalReferences();
     void saveGlobalReferences();
     float getDisplayedAxisValue(int axisIndex);

@@ -24,5 +24,15 @@ list(REMOVE_DUPLICATES INCLUDE_DIRS)
 idf_component_register(
     SRCS ${MAIN_SOURCES}
     INCLUDE_DIRS ${INCLUDE_DIRS}
-    REQUIRES lvgl esp_lcd_touch_gt911 nvs_flash esp_driver_pcnt
+    REQUIRES
+        app_update
+        esp_driver_pcnt
+        esp_event
+        esp_http_server
+        esp_netif
+        esp_wifi
+        lvgl
+        mdns
+        nvs_flash
+        esp_lcd_touch_gt911
 )
