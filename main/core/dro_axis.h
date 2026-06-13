@@ -23,8 +23,9 @@ public:
     void setInvert(bool invert);
     bool getInvert() const;
 
-    void  setPositionUm(float newPos);
+    void  setPositionUm(double newPos);
     float getPositionUm();
+    double getPositionUmDouble();
 
     // Global Reference Position
     void  setGlobalReference(float ref) { globalReference_ = ref; }
@@ -37,8 +38,8 @@ private:
     pcnt_unit_handle_t pcntUnit = nullptr;
     pcnt_channel_handle_t channelA = nullptr;
     pcnt_channel_handle_t channelB = nullptr;
-    mutable std::atomic<int64_t> countOffset;
-    mutable std::atomic<int64_t> cachedCounts;
+    mutable std::atomic<int64_t> logicalOffsetCounts;
+    mutable std::atomic<int64_t> cachedRawCounts;
     bool invertAxis;
     float globalReference_ = 0.0f;
     bool configured = false;
@@ -46,5 +47,6 @@ private:
     void configureHardware();
     void releaseHardware();
     bool applyChannelActions(bool desiredInvert);
-    int64_t snapshotCounts();
+    int64_t snapshotRawCounts();
+    int64_t snapshotPositionCounts();
 };

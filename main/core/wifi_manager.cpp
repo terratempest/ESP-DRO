@@ -18,6 +18,7 @@ constexpr const char* WIFI_SSID_KEY = "wifi_ssid";
 constexpr const char* WIFI_PASS_KEY = "wifi_pass";
 constexpr const char* MDNS_NAME = "esp-dro";
 constexpr uint8_t MAX_RECONNECT_ATTEMPTS = 4;
+constexpr int64_t CONNECT_TIMEOUT_US = 15000000;
 
 const char* disconnectReasonText(uint8_t reason) {
     switch (reason) {
@@ -58,6 +59,14 @@ esp_err_t WifiManager::begin() {
                         TAG, "wifi event register failed");
     ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiManager::handleEvent, this, nullptr),
                         TAG, "ip event register failed");
+    const esp_timer_create_args_t timeoutArgs = {
+        .callback = &WifiManager::handleConnectTimeout,
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wifi_connect_timeout",
+        .skip_unhandled_events = true
+    };
+    ESP_RETURN_ON_ERROR(esp_timer_create(&timeoutArgs, &connectTimeoutTimer), TAG, "connect timeout timer failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_storage(WIFI_STORAGE_RAM), TAG, "wifi storage failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "wifi mode failed");
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "wifi start failed");
@@ -91,6 +100,7 @@ void WifiManager::disconnect() {
     connected.store(false);
     connecting.store(false);
     ipAddress.clear();
+    stopConnectTimeout();
     esp_wifi_disconnect();
     updateStatus("Wi-Fi disconnected");
 }
@@ -203,6 +213,8 @@ void WifiManager::handleEvent(void* arg, esp_event_base_t eventBase, int32_t eve
             return;
         }
 
+        self->stopConnectTimeout();
+
         if (self->intentionalDisconnect.load()) {
             self->connecting.store(false);
             self->updateStatus("Wi-Fi disconnected");
@@ -241,6 +253,8 @@ void WifiManager::handleEvent(void* arg, esp_event_base_t eventBase, int32_t eve
             if (err != ESP_OK) {
                 self->connecting.store(false);
                 self->statusText = std::string("Wi-Fi reconnect failed: ") + esp_err_to_name(err);
+            } else {
+                self->startConnectTimeout();
             }
         }
     } else if (eventBase == IP_EVENT && eventId == IP_EVENT_STA_GOT_IP) {
@@ -250,12 +264,30 @@ void WifiManager::handleEvent(void* arg, esp_event_base_t eventBase, int32_t eve
         self->ipAddress = ip;
         self->connected.store(true);
         self->connecting.store(false);
+        self->stopConnectTimeout();
         self->intentionalDisconnect.store(false);
         self->reconnectSuppressed.store(false);
         self->reconnectAttempts = 0;
         self->updateStatus("Wi-Fi connected");
         ESP_LOGI(TAG, "Connected to %s at %s", self->ssid.c_str(), self->ipAddress.c_str());
     }
+}
+
+void WifiManager::handleConnectTimeout(void* arg) {
+    auto* self = static_cast<WifiManager*>(arg);
+    if (!self || !self->connecting.load() || self->connected.load()) {
+        return;
+    }
+
+    self->connecting.store(false);
+    self->connected.store(false);
+    self->intentionalDisconnect.store(true);
+    self->reconnectSuppressed.store(false);
+    self->reconnectAttempts = 0;
+    self->ipAddress.clear();
+    self->statusText = "Wi-Fi failed: connect timeout";
+    ESP_LOGW(TAG, "Connection timed out for %s", self->ssid.c_str());
+    esp_wifi_disconnect();
 }
 
 void WifiManager::loadCredentials() {
@@ -288,18 +320,36 @@ esp_err_t WifiManager::startStation() {
     connected.store(false);
     connecting.store(true);
     intentionalDisconnect.store(false);
-    reconnectSuppressed.store(true);
+    reconnectSuppressed.store(false);
     reconnectAttempts = 0;
     ipAddress.clear();
     updateStatus("Wi-Fi connecting");
-    esp_wifi_disconnect();
+    esp_err_t disconnectErr = esp_wifi_disconnect();
+    reconnectSuppressed.store(disconnectErr == ESP_OK);
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &config), TAG, "wifi config failed");
     esp_err_t err = esp_wifi_connect();
     if (err != ESP_OK) {
         connecting.store(false);
+        stopConnectTimeout();
         statusText = std::string("Wi-Fi connect failed: ") + esp_err_to_name(err);
+    } else {
+        startConnectTimeout();
     }
     return err;
+}
+
+void WifiManager::startConnectTimeout() {
+    if (!connectTimeoutTimer) {
+        return;
+    }
+    esp_timer_stop(connectTimeoutTimer);
+    esp_timer_start_once(connectTimeoutTimer, CONNECT_TIMEOUT_US);
+}
+
+void WifiManager::stopConnectTimeout() {
+    if (connectTimeoutTimer) {
+        esp_timer_stop(connectTimeoutTimer);
+    }
 }
 
 void WifiManager::updateStatus(const char* status) {

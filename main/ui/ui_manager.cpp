@@ -32,7 +32,7 @@ void UIManager::init() {
     lastAxisTexts.resize(AXES_COUNT);
     lastRawAxisPositions.resize(AXES_COUNT, 0.0f);
     for (int i = 0; i < AXES_COUNT; ++i) {
-        lastRawAxisPositions[i] = axes[i].getPositionUm();
+        lastRawAxisPositions[i] = static_cast<float>(axes[i].getPositionUmDouble());
     }
     lastActivityMs = currentMillis();
     lastSeenTouchMs = app_display_get_last_touch_ms();
@@ -94,7 +94,7 @@ void UIManager::init() {
         // Offset vector for N axes (default 0)
         std::vector<float> offsets(AXES_COUNT, 0.0f);
         for (int i = 0; i < AXES_COUNT; ++i)
-            offsets[i] = axes[i].getPositionUm() / 1000.0f - axes[i].getGlobalReference();
+            offsets[i] = static_cast<float>(axes[i].getPositionUmDouble() / 1000.0) - axes[i].getGlobalReference();
 
         if (!toolManager.addTool(name, offsets)) {
             showStatusMessage("Maximum tool count reached");
@@ -132,7 +132,7 @@ void UIManager::init() {
         ui.funcBtnAbsIncr->setText(isIncremental ? "INCR" : "ABS");
         if (isIncremental) {
             for (int i = 0; i < AXES_COUNT; ++i) {
-                incrOffsets[i] = axes[i].getPositionUm() / 1000.0f;
+                incrOffsets[i] = static_cast<float>(axes[i].getPositionUmDouble() / 1000.0);
             }
         }
         updateDisplay();
@@ -235,7 +235,7 @@ void UIManager::showStatusMessage(const char* message) {
 
 float UIManager::getDisplayedAxisValue(int axis) {
     const auto& tool = toolManager.getTool(currentToolIndex);
-    float axis_pos = axes[axis].getPositionUm() / 1000.0f;
+    float axis_pos = static_cast<float>(axes[axis].getPositionUmDouble() / 1000.0);
 
     if (isIncremental) {
         axis_pos -= incrOffsets[axis];
@@ -264,7 +264,7 @@ void UIManager::setGlobalReference(int axis, float desiredDroValue) {
     // Convert from diameter mode to radius (store in axis units, applies to X axis only)
     if (axis == 0 && isDiameterMode) userValue /= 2.0f;
 
-    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+    float machine_pos = static_cast<float>(axisObj.getPositionUmDouble() / 1000.0);
     float tool_offset = tool.getOffset(axis);
 
     axisObj.setGlobalReference(machine_pos - userValue - tool_offset);
@@ -286,7 +286,7 @@ void UIManager::setIncrementalReference(int axis, float desiredDroValue) {
     // Convert from diameter mode to radius (store in axis units, applies to X axis only)
     if (axis == 0 && isDiameterMode) userValue /= 2.0f;
 
-    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+    float machine_pos = static_cast<float>(axisObj.getPositionUmDouble() / 1000.0);
     float tool_offset = tool.getOffset(axis);
 
     incrOffsets[axis] = machine_pos - userValue - tool_offset;
@@ -306,7 +306,7 @@ void UIManager::setToolOffsetValue(int axis, float userValue) {
     // Convert from diameter mode to radius if needed (X axis only)
     if (axis == 0 && isDiameterMode) inputValue /= 2.0f;
 
-    float machine_pos = axisObj.getPositionUm() / 1000.0f;
+    float machine_pos = static_cast<float>(axisObj.getPositionUmDouble() / 1000.0);
     tool.setOffset(axis, machine_pos - axisObj.getGlobalReference() - inputValue);
 
     toolManager.saveTools();
@@ -390,7 +390,7 @@ void UIManager::markActivity(uint32_t nowMs) {
 void UIManager::updateActivityState(uint32_t nowMs) {
     bool axisMoved = false;
     for (int i = 0; i < AXES_COUNT; ++i) {
-        float rawPosition = axes[i].getPositionUm();
+        float rawPosition = static_cast<float>(axes[i].getPositionUmDouble());
         if (i >= (int)lastRawAxisPositions.size()) {
             lastRawAxisPositions.resize(AXES_COUNT, 0.0f);
         }

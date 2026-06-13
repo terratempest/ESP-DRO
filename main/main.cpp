@@ -91,7 +91,8 @@ extern "C" void app_main() {
         .callback = &lv_tick_handler,
         .arg = nullptr,
         .dispatch_method = ESP_TIMER_TASK,
-        .name = "lv_tick"
+        .name = "lv_tick",
+        .skip_unhandled_events = false
     };
     esp_timer_handle_t lvgl_tick_timer;
     esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer);

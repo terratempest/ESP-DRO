@@ -12,7 +12,7 @@ static constexpr uint32_t PCNT_GLITCH_FILTER_NS = 1250;
 
 DroAxis::DroAxis()
     : name("init"), pinA(-1), pinB(-1), step_um(1.0f), position_um(0.0f),
-      unitIndex(0), countOffset(0), cachedCounts(0), invertAxis(false), configured(false) {}
+      unitIndex(0), logicalOffsetCounts(0), cachedRawCounts(0), invertAxis(false), configured(false) {}
 
 void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisStepUm, int axisUnitIndex) {
     releaseHardware();
@@ -22,8 +22,8 @@ void DroAxis::init(const char* axisName, int axisPinA, int axisPinB, float axisS
     pinB = axisPinB;
     step_um = axisStepUm;
     unitIndex = axisUnitIndex;
-    countOffset.store(0, std::memory_order_relaxed);
-    cachedCounts.store(0, std::memory_order_relaxed);
+    logicalOffsetCounts.store(0, std::memory_order_relaxed);
+    cachedRawCounts.store(0, std::memory_order_relaxed);
     invertAxis = false;
     position_um = 0.0f;
     configured = false;
@@ -146,8 +146,8 @@ void DroAxis::begin() {
     configureHardware();
 
     ESP_ERROR_CHECK(pcnt_unit_clear_count(pcntUnit));
-    countOffset.store(0, std::memory_order_relaxed);
-    cachedCounts.store(0, std::memory_order_relaxed);
+    logicalOffsetCounts.store(0, std::memory_order_relaxed);
+    cachedRawCounts.store(0, std::memory_order_relaxed);
     ESP_ERROR_CHECK(pcnt_unit_start(pcntUnit));
     configured = true;
 
@@ -156,37 +156,18 @@ void DroAxis::begin() {
 }
 
 void DroAxis::zero() {
-    if (configured) {
-        esp_err_t err = pcnt_unit_stop(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to stop PCNT unit while zeroing axis '%s': %s",
-                     name, esp_err_to_name(err));
-            return;
-        }
-        err = pcnt_unit_clear_count(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to clear PCNT unit while zeroing axis '%s': %s",
-                     name, esp_err_to_name(err));
-            pcnt_unit_start(pcntUnit);
-            return;
-        }
-    }
-    countOffset.store(0, std::memory_order_relaxed);
-    cachedCounts.store(0, std::memory_order_relaxed);
+    logicalOffsetCounts.store(-snapshotRawCounts(), std::memory_order_relaxed);
     position_um = 0.0f;
-    if (configured) {
-        esp_err_t err = pcnt_unit_start(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to restart PCNT unit after zeroing axis '%s': %s",
-                     name, esp_err_to_name(err));
-        }
-    }
 }
 
 void DroAxis::setStepUm(float step) {
-    if (step > 0.0f) {
-        step_um = step;
+    if (step <= 0.0f || !std::isfinite(step)) {
+        return;
     }
+
+    double currentPositionUm = getPositionUmDouble();
+    step_um = step;
+    setPositionUm(currentPositionUm);
 }
 
 float DroAxis::getStepUm() const {
@@ -202,6 +183,8 @@ void DroAxis::setInvert(bool invert) {
         invertAxis = invert;
         return;
     }
+
+    double currentPositionUm = getPositionUmDouble();
 
     esp_err_t err = pcnt_unit_stop(pcntUnit);
     if (err != ESP_OK) {
@@ -247,15 +230,16 @@ void DroAxis::setInvert(bool invert) {
     }
 
     invertAxis = invert;
+    setPositionUm(currentPositionUm);
 }
 
 bool DroAxis::getInvert() const {
     return invertAxis;
 }
 
-int64_t DroAxis::snapshotCounts() {
+int64_t DroAxis::snapshotRawCounts() {
     if (!configured) {
-        return countOffset.load(std::memory_order_relaxed);
+        return cachedRawCounts.load(std::memory_order_relaxed);
     }
 
     int hwCount = 0;
@@ -263,48 +247,38 @@ int64_t DroAxis::snapshotCounts() {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read PCNT count for axis '%s': %s",
                  name, esp_err_to_name(err));
-        return cachedCounts.load(std::memory_order_relaxed);
+        return cachedRawCounts.load(std::memory_order_relaxed);
     }
 
-    int64_t counts = countOffset.load(std::memory_order_relaxed) + hwCount;
-    cachedCounts.store(counts, std::memory_order_relaxed);
-    return counts;
+    int64_t rawCounts = hwCount;
+    cachedRawCounts.store(rawCounts, std::memory_order_relaxed);
+    return rawCounts;
 }
 
-void DroAxis::setPositionUm(float newPos) {
+int64_t DroAxis::snapshotPositionCounts() {
+    return snapshotRawCounts() + logicalOffsetCounts.load(std::memory_order_relaxed);
+}
+
+void DroAxis::setPositionUm(double newPos) {
+    if (step_um <= 0.0f || !std::isfinite(step_um) || !std::isfinite(newPos)) {
+        return;
+    }
+
     int64_t newCount = static_cast<int64_t>(std::llround(newPos / step_um));
-    if (configured) {
-        esp_err_t err = pcnt_unit_stop(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to stop PCNT unit while setting axis '%s': %s",
-                     name, esp_err_to_name(err));
-            return;
-        }
-        err = pcnt_unit_clear_count(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to clear PCNT unit while setting axis '%s': %s",
-                     name, esp_err_to_name(err));
-            pcnt_unit_start(pcntUnit);
-            return;
-        }
-    }
-    position_um = newPos;
-    countOffset.store(newCount, std::memory_order_relaxed);
-    cachedCounts.store(newCount, std::memory_order_relaxed);
-    if (configured) {
-        esp_err_t err = pcnt_unit_start(pcntUnit);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to restart PCNT unit after setting axis '%s': %s",
-                     name, esp_err_to_name(err));
-        }
-    }
+    logicalOffsetCounts.store(newCount - snapshotRawCounts(), std::memory_order_relaxed);
+    position_um = static_cast<float>(newPos);
 }
 
 float DroAxis::getPositionUm() {
-    return static_cast<float>(snapshotCounts()) * step_um;
+    return static_cast<float>(getPositionUmDouble());
+}
+
+double DroAxis::getPositionUmDouble() {
+    double position = static_cast<double>(snapshotPositionCounts()) * static_cast<double>(step_um);
+    position_um = static_cast<float>(position);
+    return position;
 }
 
 void DroAxis::simulateStep(bool forward) {
-    int64_t counts = countOffset.fetch_add(forward ? 1 : -1, std::memory_order_relaxed) + (forward ? 1 : -1);
-    cachedCounts.store(counts, std::memory_order_relaxed);
+    cachedRawCounts.fetch_add(forward ? 1 : -1, std::memory_order_relaxed);
 }

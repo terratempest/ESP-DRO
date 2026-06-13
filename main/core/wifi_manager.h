@@ -9,6 +9,7 @@
 
 #include "esp_err.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 
 struct WifiNetwork {
     std::string ssid;
@@ -37,13 +38,17 @@ public:
 
 private:
     static void handleEvent(void* arg, esp_event_base_t eventBase, int32_t eventId, void* eventData);
+    static void handleConnectTimeout(void* arg);
     void loadCredentials();
     void saveCredentials(const std::string& ssid, const std::string& password);
     esp_err_t startStation();
+    void startConnectTimeout();
+    void stopConnectTimeout();
     void updateStatus(const char* status);
 
     PreferencesWrapper& prefs;
     esp_netif_t* stationNetif = nullptr;
+    esp_timer_handle_t connectTimeoutTimer = nullptr;
     std::string ssid;
     std::string password;
     std::string ipAddress;
