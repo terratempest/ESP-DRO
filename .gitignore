@@ -42,3 +42,4 @@ Backups/
 build/
 managed_components/
 sdkconfig.old
+AGENTS.md
